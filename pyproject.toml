@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mobiu-q"
+version = "1.0.4"
+description = "Soft Algebra Optimizer for Quantum & Complex Optimization"
+readme = "README.md"
+license = {text = "Proprietary"}
+authors = [
+    {name = "Mobiu Technologies", email = "ai@mobiu.ai"}
+]
+keywords = ["quantum", "optimization", "VQE", "QAOA", "machine-learning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy>=1.21.0",
+    "requests>=2.25.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+full = [
+    "scipy>=1.7.0",
+    "qiskit>=0.40.0",
+]
+
+[project.urls]
+Homepage = "https://app.mobiu.ai"
+Documentation = "https://pypi.org/project/mobiu-q/"
+
+[project.scripts]
+mobiu-q = "mobiu_q.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mobiu_q*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

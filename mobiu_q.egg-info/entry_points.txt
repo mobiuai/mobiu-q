@@ -1,0 +1,2 @@
+[console_scripts]
+mobiu-q = mobiu_q.cli:main

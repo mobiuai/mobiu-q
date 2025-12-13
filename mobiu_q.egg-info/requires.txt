@@ -1,0 +1,10 @@
+numpy>=1.21.0
+requests>=2.25.0
+
+[dev]
+pytest>=7.0
+pytest-cov
+
+[full]
+scipy>=1.7.0
+qiskit>=0.40.0
