@@ -168,7 +168,7 @@ This identifies optimal "emergence points" where the optimization should act agg
 
 ## Pricing
 
-- **Free**: 20 runs/month
+- **Free**: 5 runs/month
 - **Pro**: $19/month unlimited
 
 Get your license at [app.mobiu.ai](https://app.mobiu.ai)

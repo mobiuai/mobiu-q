@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 1.5.0
+Version: 1.5.1
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Author-email: Mobiu Technologies <ai@mobiu.ai>
 License: Proprietary
@@ -198,7 +198,7 @@ This identifies optimal "emergence points" where the optimization should act agg
 
 ## Pricing
 
-- **Free**: 20 runs/month
+- **Free**: 5 runs/month
 - **Pro**: $19/month unlimited
 
 Get your license at [app.mobiu.ai](https://app.mobiu.ai)
