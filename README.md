@@ -1,4 +1,4 @@
-# Mobiu-Q (v1.5.2)
+# Mobiu-Q (v1.6.0)
 
 **Hybrid Soft-Algebra Optimizer for Quantum Computing**
 
@@ -22,6 +22,8 @@ S_{t+1} = (\gamma \cdot S_t) \cdot \Delta_t + \Delta_t
 ````
 
 Where the dual multiplication `·` ensures that potential is inextricably linked to realized gain. This creates a "smarter" momentum that adapts instantly to both clean and noisy landscapes.
+
+** Note: In v1.6+, the optimizer utilizes a decoupled Vector EMA implementation of the Soft Algebra state evolution to maximize numerical stability on noisy hardware.
 
 -----
 
