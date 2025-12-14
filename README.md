@@ -1,183 +1,186 @@
 # Mobiu-Q
 
-**Mobiu-Q** is a next-generation optimizer built on *Soft Algebra* and *Demeasurement* theory, enabling stable and efficient optimization in quantum variational algorithms (VQE, QAOA).
+**Soft Algebra Optimizer for Quantum Computing**
 
-### ✨ Features
-- Soft Algebra update rule for stable convergence  
-- SPSA Demeasurement for noisy hardware  
-- Adaptive "Noisy Mode" presets
-- **Validated on real quantum hardware (IBM)**
+Mobiu-Q achieves **+23% on VQE** and **+46% on QAOA** compared to Adam optimizer, using a novel Soft Algebra approach that's resilient to quantum noise.
 
----
+## Installation
 
-## 📦 Installation
 ```bash
 pip install mobiu-q
 ```
 
-## 🔑 License
-```python
-from mobiu_q import activate_license
+## Quick Start
 
-activate_license("YOUR-LICENSE-KEY")
-```
-- **Free tier:** 5 runs/month
-- **Pro tier:** Unlimited runs
-
----
-
-## 🚀 Quick Start (Simulation)
-Best for clean simulations or statevector backends.
+### VQE (Molecular Simulation)
 
 ```python
-import numpy as np
-from mobiu_q import MobiuQCore, Demeasurement, get_energy_function
-
-energy_fn = get_energy_function("h2_molecule")
-
-# Initialize in standard mode
-opt = MobiuQCore(mode="standard") 
-
-params = np.random.uniform(-np.pi, np.pi, 6)
-
-for step in range(50):
-    E = energy_fn(params)
-    grad = Demeasurement.finite_difference(energy_fn, params)
-    params = opt.step(params, grad, E)
-
-opt.end()  # End session
-```
-
-## ⚡ Real Hardware / Shot Noise
-When running on noisy quantum computers (IBM, IonQ) or simulators with shot noise:
-
-```python
-# Initialize in noisy mode (robust learning)
-opt = MobiuQCore(mode="noisy") 
-
-for step in range(100):
-    # SPSA returns gradient AND energy estimate (saves 50% measurements)
-    grad, E = Demeasurement.spsa(energy_fn, params, c_shift=0.1)
-    params = opt.step(params, grad, E)
-
-opt.end()
-```
-
----
-
-## 📊 Performance Results
-
-### Clean Simulation
-Tested on H2 molecule (6 params), 100 seeds:
-
-| Optimizer | Gap to Ground State | Improvement |
-|-----------|---------------------|-------------|
-| Adam | 0.089 | - |
-| **Mobiu-Q** | **0.034** | **+62%** ✅ |
-
-### Shot Noise Simulation
-Tested on Transverse Ising (4 qubits), 30 seeds:
-
-| Shots | Adam Gap | Mobiu-Q Gap | Improvement | p-value |
-|-------|----------|-------------|-------------|---------|
-| 1000 | 1.63 | 1.48 | +9.2% | 0.002 ✅ |
-| 500 | 1.65 | 1.49 | +9.8% | 0.002 ✅ |
-| 50 | 2.00 | 1.82 | +9.2% | 0.009 ✅ |
-
-### Real Quantum Hardware (IBM Fez)
-H2 molecule optimization:
-
-| Metric | Result |
-|--------|--------|
-| Initial gap | 0.22 |
-| **Final gap** | **0.034** |
-| Improvement | **85%** ✅ |
-
----
-
-## 💡 Choosing the Right Mode
-
-| Scenario | Mode | Gradient Method |
-|----------|------|-----------------|
-| Clean simulation (statevector) | `standard` | `finite_difference` |
-| Shot noise simulation | `noisy` | `spsa` |
-| Real quantum hardware | `noisy` | `spsa` |
-
-### Mode Settings
-
-| Mode | Learning Rate | Best For |
-|------|---------------|----------|
-| `standard` | 0.05 | Simulators (Qiskit Aer, PennyLane, Cirq) |
-| `noisy` | 0.02 | Real hardware (IBM, IonQ, Rigetti) |
-
----
-
-## 📚 Built-in Problems
-
-```python
-from mobiu_q import list_problems, get_energy_function, get_ground_state_energy
-
-print(list_problems())
-# ['h2_molecule', 'lih_molecule', 'transverse_ising', 'heisenberg_xxz', ...]
-
-energy_fn = get_energy_function("h2_molecule")
-E0 = get_ground_state_energy("h2_molecule")
-```
-
----
-
-## ⚙️ API Reference
-
-### MobiuQCore
-
-```python
-MobiuQCore(
-    license_key=None,       # Your license key (or use activate_license())
-    mode="standard",        # 'standard' or 'noisy'
-    base_lr=None,           # Custom learning rate (overrides mode)
-    verbose=True            # Print session messages
-)
-```
-
-**Methods:**
-- `step(params, gradient, energy)` → updated params
-- `end()` → close session
-
-### Demeasurement
-
-```python
-# For clean simulations (2*N function calls)
-grad = Demeasurement.finite_difference(fn, params)
-
-# For noisy environments (only 2 function calls!)
-grad, energy = Demeasurement.spsa(fn, params, c_shift=0.1)
-```
-
----
-
-## 🔥 Full Example: IBM Hardware
-
-```python
-from qiskit_ibm_runtime import QiskitRuntimeService, EstimatorV2
 from mobiu_q import MobiuQCore, Demeasurement
+import numpy as np
 
-service = QiskitRuntimeService(channel="ibm_quantum")
-backend = service.least_busy(simulator=False, min_num_qubits=5)
-estimator = EstimatorV2(mode=backend)
+# Initialize optimizer for VQE
+opt = MobiuQCore(
+    license_key="your-license-key",
+    problem="vqe"         # Uses Trust Ratio, lr=0.01
+)
 
-opt = MobiuQCore(mode="noisy")
-
+# Optimization loop
+params = np.random.uniform(-np.pi, np.pi, n_params)
 for step in range(60):
-    grad, energy = Demeasurement.spsa(
-        lambda p: estimator.run([(circuit, observable)]).result()[0].data.evs.item(),
-        params,
-        c_shift=0.12
-    )
-    params = opt.step(params, grad, energy)
+    energy = energy_fn(params)
+    gradient = Demeasurement.finite_difference(energy_fn, params)
+    params = opt.step(params, gradient, energy)
 
 opt.end()
 ```
 
+### QAOA (Combinatorial Optimization)
+
+```python
+from mobiu_q import MobiuQCore
+import numpy as np
+
+# Initialize optimizer for QAOA
+opt = MobiuQCore(
+    license_key="your-license-key",
+    mode="noisy",         # For SPSA gradients
+    problem="qaoa",       # Uses Super-Equation Δ†
+    base_lr=0.1           # Important! Default is 0.02
+)
+
+# SPSA gradient function (built-in to your workflow)
+def spsa_gradient(fn, params, c=0.1):
+    delta = np.random.choice([-1, 1], size=len(params))
+    E_plus = fn(params + c * delta)
+    E_minus = fn(params - c * delta)
+    grad = (E_plus - E_minus) / (2 * c) * delta
+    energy = (E_plus + E_minus) / 2
+    return grad, energy
+
+# Optimization loop
+params = np.random.uniform(-np.pi, np.pi, n_params)
+for step in range(150):
+    gradient, energy = spsa_gradient(qaoa_energy_fn, params)
+    params = opt.step(params, gradient, energy)
+
+opt.end()
+```
+
+## Multi-Seed Experiments (Counts as 1 Run)
+
+```python
+opt = MobiuQCore(license_key="your-license-key", problem="vqe")
+
+for seed in range(10):
+    opt.new_run()  # Reset optimizer state, keep session
+    np.random.seed(seed)
+    params = np.random.uniform(-np.pi, np.pi, n_params)
+    
+    for step in range(60):
+        gradient = Demeasurement.finite_difference(energy_fn, params)
+        params = opt.step(params, gradient, energy_fn(params))
+
+opt.end()  # All 10 seeds count as 1 run!
+```
+
+## Validate Your Results
+
+Run our validation script to see the improvement on your machine:
+
+```bash
+# Download validation script
+curl -O https://raw.githubusercontent.com/mobiuai/mobiu-q/main/examples/customer_validation.py
+
+# Edit LICENSE_KEY in the file, then run:
+python customer_validation.py
+```
+
+Expected output:
+```
+TEST 1: VQE - H2 Molecule (60 steps)
+📊 IMPROVEMENT: ~23% better accuracy with Mobiu-Q
+
+TEST 2: QAOA - MaxCut Ising (150 steps)  
+📊 IMPROVEMENT: ~46% (Mobiu-Q wins 10/10 seeds)
+```
+
+## Benchmarks
+
+### VQE (Quantum Chemistry)
+
+| Molecule | Improvement vs Adam | p-value |
+|----------|---------------------|---------|
+| H₂       | +23%                | < 0.05  |
+| LiH      | +50.6%              | < 10⁻¹² |
+| HeH⁺     | +68%                | < 10⁻⁴⁰ |
+
+### QAOA (Combinatorial, noise=10%)
+
+| Problem             | Depth | Improvement | Win Rate |
+|---------------------|-------|-------------|----------|
+| MaxCut              | p=5   | +46%        | 10/10    |
+| Vertex Cover        | p=5   | +35.77%     | 55/60    |
+| Max Independent Set | p=5   | +30.62%     | 52/60    |
+
+### Hardware Validation
+
+Tested on **IBM Quantum Fez (156-qubit)**:
+- **Adam**: Crashed to non-physical energy
+- **Mobiu-Q**: Converged to 99.6% accuracy
+
+## Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `problem` | `"vqe"` | `"vqe"` or `"qaoa"` |
+| `mode` | `"standard"` | `"standard"` or `"noisy"` |
+| `base_lr` | auto | VQE: 0.01, QAOA: **use 0.1** |
+
+### Recommended Settings
+
+| Use Case | Settings |
+|----------|----------|
+| VQE (simulator) | `problem="vqe"` |
+| VQE (hardware) | `problem="vqe", mode="noisy"` |
+| QAOA | `problem="qaoa", mode="noisy", base_lr=0.1` |
+
+## How It Works
+
+### VQE: Trust Ratio
+
+For smooth energy landscapes (molecular chemistry), Mobiu-Q uses the **Trust Ratio**:
+
+```
+φ = |S.real| / (|S.real| + |S.soft| + ε)
+```
+
+High trust = stable gradient = larger learning rate.
+
+### QAOA: Super-Equation Δ†
+
+For rugged combinatorial landscapes, Mobiu-Q uses the **Super-Equation**:
+
+```
+Δ† = |Du[sin(πS)]| · g(τ,α) · Γ(a,β) · √(b·g(τ,α))
+```
+
+This identifies optimal "emergence points" where the optimization should act aggressively.
+
+## Pricing
+
+- **Free**: 20 runs/month
+- **Pro**: $19/month unlimited
+
+Get your license at [app.mobiu.ai](https://app.mobiu.ai)
+
+## Support
+
+- Email: ai@mobiu.ai
+
+## License
+
+Proprietary - All rights reserved.
+
 ---
 
-© Mobiu Technologies, 2025
+Made with ❤️ by [Mobiu Technologies](https://mobiu.ai)

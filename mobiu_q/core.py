@@ -3,16 +3,38 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum variational algorithms.
 
-Usage:
+Usage (VQE - Chemistry):
     from mobiu_q import MobiuQCore, Demeasurement
     
-    opt = MobiuQCore(license_key="your-key", mode="standard")
+    opt = MobiuQCore(license_key="your-key", problem="vqe")
     
     for step in range(100):
         grad = Demeasurement.finite_difference(energy_fn, params)
         params = opt.step(params, grad, energy_fn(params))
     
-    opt.end()  # End session (important!)
+    opt.end()
+
+Usage (QAOA - Combinatorial):
+    from mobiu_q import MobiuQCore, Demeasurement
+    
+    opt = MobiuQCore(license_key="your-key", problem="qaoa", mode="noisy")
+    
+    for step in range(150):
+        grad, energy = Demeasurement.spsa(energy_fn, params)
+        params = opt.step(params, grad, energy)
+    
+    opt.end()
+
+Multi-seed usage (counts as 1 run):
+    opt = MobiuQCore(license_key="your-key")
+    
+    for seed in range(10):
+        opt.new_run()  # Reset state, same session
+        params = init_params(seed)
+        for step in range(100):
+            params = opt.step(params, grad, energy)
+    
+    opt.end()  # Only here it counts as 1 run
 """
 
 import numpy as np
@@ -25,7 +47,7 @@ import json
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# API endpoint - יוחלף בכתובת האמיתית אחרי deploy
+# API endpoint
 API_ENDPOINT = os.environ.get(
     "MOBIU_Q_API_ENDPOINT",
     "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
@@ -70,23 +92,45 @@ class MobiuQCore:
     Args:
         license_key: Your Mobiu-Q license key (or set MOBIU_Q_LICENSE_KEY env var)
         mode: "standard" (clean simulations) or "noisy" (quantum hardware)
+        problem: "vqe" (chemistry, default) or "qaoa" (combinatorial)
         base_lr: Learning rate (default: 0.01 for standard, 0.02 for noisy)
         offline_fallback: If True, use local Adam when API unavailable
     
-    Example:
-        opt = MobiuQCore(license_key="xxx", mode="standard")
+    Example (VQE - Chemistry):
+        opt = MobiuQCore(license_key="xxx", problem="vqe")
         
         for step in range(100):
             grad = Demeasurement.finite_difference(energy_fn, params)
             params = opt.step(params, grad, energy_fn(params))
         
-        opt.end()  # Always call this!
+        opt.end()
+    
+    Example (QAOA - Combinatorial):
+        opt = MobiuQCore(license_key="xxx", problem="qaoa", mode="noisy")
+        
+        for step in range(150):
+            grad, energy = Demeasurement.spsa(energy_fn, params)
+            params = opt.step(params, grad, energy)
+        
+        opt.end()
+    
+    Example (multi-seed, counts as 1 run):
+        opt = MobiuQCore(license_key="xxx")
+        
+        for seed in range(10):
+            opt.new_run()  # Reset optimizer state, keep session
+            params = init_params(seed)
+            for step in range(100):
+                params = opt.step(params, grad, energy)
+        
+        opt.end()  # Counts as 1 run total
     """
     
     def __init__(
         self,
         license_key: Optional[str] = None,
         mode: str = "standard",
+        problem: str = "vqe",  # NEW: "vqe" or "qaoa"
         base_lr: Optional[float] = None,
         offline_fallback: bool = True,
         verbose: bool = True
@@ -98,7 +142,12 @@ class MobiuQCore:
                 "or pass license_key parameter, or run: mobiu-q activate YOUR_KEY"
             )
         
+        # Validate problem type
+        if problem not in ("vqe", "qaoa"):
+            raise ValueError(f"problem must be 'vqe' or 'qaoa', got '{problem}'")
+        
         self.mode = mode
+        self.problem = problem  # NEW
         self.base_lr = base_lr
         self.offline_fallback = offline_fallback
         self.verbose = verbose
@@ -115,6 +164,9 @@ class MobiuQCore:
         self.energy_history = []
         self.lr_history = []
         
+        # Track number of runs in this session
+        self._run_count = 0
+        
         # Start session
         self._start_session()
     
@@ -127,6 +179,7 @@ class MobiuQCore:
                     "license_key": self.license_key,
                     "action": "start",
                     "mode": self.mode,
+                    "problem": self.problem,  # NEW
                     "base_lr": self.base_lr
                 },
                 timeout=10
@@ -138,18 +191,19 @@ class MobiuQCore:
                 error = data.get("error", "Unknown error")
                 if "limit" in error.lower():
                     print(f"⚠️  {error}")
-                    print("   Upgrade at: https://mobiu-q.com/pricing")
+                    print("   Upgrade at: https://app.mobiu.ai")
                 raise RuntimeError(f"Failed to start session: {error}")
             
             self.session_id = data["session_id"]
             runs_remaining = data.get("runs_remaining")
+            problem_type = data.get("problem", self.problem)
             
             if runs_remaining is not None and runs_remaining >= 0:
                 if self.verbose:
-                    print(f"🚀 Mobiu-Q session started ({runs_remaining} runs remaining this month)")
+                    print(f"🚀 Mobiu-Q session started ({runs_remaining} runs remaining) [problem={problem_type}]")
             else:
                 if self.verbose:
-                    print("🚀 Mobiu-Q session started (Pro tier)")
+                    print(f"🚀 Mobiu-Q session started (Pro tier) [problem={problem_type}]")
                 
         except requests.exceptions.RequestException as e:
             if self.offline_fallback:
@@ -159,6 +213,57 @@ class MobiuQCore:
                 self._offline_mode = True
             else:
                 raise RuntimeError(f"Cannot connect to Mobiu-Q API: {e}")
+    
+    def new_run(self):
+        """
+        Start a new optimization run within the same session.
+        
+        Use this for multi-seed experiments - all runs count as 1 session.
+        Resets optimizer state (momentum, etc.) but keeps the session open.
+        
+        Example:
+            opt = MobiuQCore(license_key="xxx")
+            
+            for seed in range(10):
+                opt.new_run()  # Reset state for new seed
+                params = init_params(seed)
+                for step in range(100):
+                    params = opt.step(params, grad, energy)
+            
+            opt.end()  # All 10 seeds count as 1 run
+        """
+        self._run_count += 1
+        
+        # Reset local tracking
+        self.energy_history.clear()
+        self.lr_history.clear()
+        self._local_m = None
+        self._local_v = None
+        self._local_t = 0
+        
+        if self._offline_mode or not self.session_id:
+            return
+        
+        # Call server to reset optimizer state
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                json={
+                    "license_key": self.license_key,
+                    "session_id": self.session_id,
+                    "action": "reset"
+                },
+                timeout=10
+            )
+            
+            data = response.json()
+            if not data.get("success"):
+                if self.verbose:
+                    print(f"⚠️  Could not reset server state: {data.get('error')}")
+                    
+        except requests.exceptions.RequestException as e:
+            if self.verbose:
+                print(f"⚠️  Could not reset server state: {e}")
     
     def step(
         self, 
@@ -170,20 +275,18 @@ class MobiuQCore:
         Perform one optimization step.
         
         Args:
-            params: Current parameters
-            gradient: Gradient at current params
-            energy: Energy/loss at current params
+            params: Current parameter values
+            gradient: Gradient of the energy w.r.t. params
+            energy: Current energy value
         
         Returns:
             Updated parameters
         """
-        self.energy_history.append(float(energy))
+        self.energy_history.append(energy)
         
-        # Offline fallback (plain Adam)
         if self._offline_mode:
             return self._offline_step(params, gradient)
         
-        # API call
         try:
             response = requests.post(
                 self.api_endpoint,
@@ -279,9 +382,24 @@ class MobiuQCore:
         except Exception as e:
             if self.verbose:
                 print(f"⚠️  Could not cleanly end session: {e}")
+        
+        self.session_id = None
     
     def reset(self):
-        """Reset optimizer state for a new optimization run."""
+        """
+        DEPRECATED: Use new_run() for multi-seed experiments.
+        
+        This method ends the current session and starts a new one,
+        which counts as a separate run. Use new_run() instead to
+        keep multiple optimization runs in a single session.
+        """
+        import warnings
+        warnings.warn(
+            "reset() is deprecated and counts each call as a separate run. "
+            "Use new_run() for multi-seed experiments (counts as 1 run total).",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self.end()
         self.energy_history.clear()
         self.lr_history.clear()
@@ -354,7 +472,7 @@ class Demeasurement:
         """
         Simultaneous Perturbation Stochastic Approximation (SPSA).
         Requires only 2 circuit evaluations regardless of parameter count!
-        Best for: Noisy quantum hardware, NISQ devices.
+        Best for: Noisy quantum hardware, NISQ devices, QAOA.
         
         Returns:
             (gradient_estimate, estimated_energy)
@@ -410,7 +528,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = [
     "MobiuQCore",
     "Demeasurement",
