@@ -1,4 +1,4 @@
-# Mobiu-Q (v1.8.2)
+# Mobiu-Q (v1.8.3)
 
 **Hybrid Soft-Algebra Optimizer for Quantum Computing**
 
