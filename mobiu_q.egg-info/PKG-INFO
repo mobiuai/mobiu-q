@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 1.8.0
+Version: 1.8.1
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Author-email: Mobiu Technologies <ai@mobiu.ai>
 License: Proprietary
@@ -28,7 +28,7 @@ Provides-Extra: full
 Requires-Dist: scipy>=1.7.0; extra == "full"
 Requires-Dist: qiskit>=0.40.0; extra == "full"
 
-# Mobiu-Q (v1.8.0)
+# Mobiu-Q (v1.8.1)
 
 **Hybrid Soft-Algebra Optimizer for Quantum Computing**
 
