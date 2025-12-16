@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 1.8.3
+Version: 1.8.4
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Author-email: Mobiu Technologies <ai@mobiu.ai>
 License: Proprietary
@@ -28,7 +28,7 @@ Provides-Extra: full
 Requires-Dist: scipy>=1.7.0; extra == "full"
 Requires-Dist: qiskit>=0.40.0; extra == "full"
 
-# Mobiu-Q (v1.8.3)
+# Mobiu-Q (v1.8.4)
 
 **Hybrid Soft-Algebra Optimizer for Quantum Computing**
 
@@ -48,10 +48,10 @@ Mobiu-Q is a cloud-based optimizer that uses **Soft Algebra** to accelerate quan
 Mobiu-Q wraps your optimization loop with a cloud-based brain that cross-validates every step using **Soft Algebra Logic**:
 
 ```math
-S_{t+1} = (\gamma \cdot S_t) \cdot \Delta_t + \Delta_t
+$$S_{t+1} = (\gamma \cdot S_t) \cdot \Delta_t + \Delta_t$$
 ````
 
-Where the dual multiplication `·` ensures that potential is inextricably linked to realized gain. This creates a "smarter" momentum that adapts instantly to both clean and noisy landscapes.
+Where $\Delta_t$ represents the dual signal $(a_t, b_t)$. This allows the "Cloud Brain" to adjust the learning rate dynamically based on algebraic trust rather than just historical averages.
 
 ** Note: In v1.6+, the optimizer utilizes a decoupled Vector EMA implementation of the Soft Algebra state evolution to maximize numerical stability on noisy hardware.
 
@@ -66,12 +66,14 @@ Tested across 10 different Hamiltonians, 100 seeds each.
 
 | Problem Domain | Improvement vs Adam | Win Rate |
 |----------------|---------------------|----------|
-| **H2 Molecule** | **+34.5%** | 96/100 |
-| **LiH Molecule** | **+28.5%** | 100/100 |
-| **Transverse Ising** | **+35.8%** | 100/100 |
-| **Heisenberg XXZ** | **+23.7%** | 100/100 |
-| **He4 Atom** | **+29.1%** | 97/100 |
-| **TOTAL AVERAGE** | **+28.7%** | **993/1000** |
+| **H2 Molecule** | **+49.12%** | 100/100 |
+| **LiH Molecule** | **+44.87%** | 100/100 |
+| **Transverse Ising** | **+22.25%** | 100/100 |
+| **Heisenberg XXZ** | **+23.01%** | 99/100 |
+| **MaxCut** | **+40.50%** | 54/60 |
+| **Vertex Cover** | **+39.59%** | 54/60 |
+| **Max Independent Set** | **+28.85%** | 50/60 |
+| **TOTAL AVERAGE** | **+35.45%** | **557/580** |
 
 *\> **Insight:** Even in standard conditions, Mobiu-Q finds deeper energy levels than Adam.*
 
