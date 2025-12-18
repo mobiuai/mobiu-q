@@ -166,6 +166,9 @@ class MobiuQCore:
         
         # Track number of runs in this session
         self._run_count = 0
+
+        # Usage tracking
+        self._usage_info = None
         
         # Start session
         self._start_session()
@@ -179,7 +182,7 @@ class MobiuQCore:
                     "license_key": self.license_key,
                     "action": "start",
                     "mode": self.mode,
-                    "problem": self.problem,  # NEW
+                    "problem": self.problem,
                     "base_lr": self.base_lr
                 },
                 timeout=10
@@ -189,21 +192,28 @@ class MobiuQCore:
             
             if not data.get("success"):
                 error = data.get("error", "Unknown error")
-                if "limit" in error.lower():
-                    print(f"⚠️  {error}")
+                if "limit" in error.lower() or "quota" in error.lower():
+                    print(f"❌ {error}")
                     print("   Upgrade at: https://app.mobiu.ai")
                 raise RuntimeError(f"Failed to start session: {error}")
             
             self.session_id = data["session_id"]
-            runs_remaining = data.get("runs_remaining")
+            self._usage_info = data.get("usage", {})
             problem_type = data.get("problem", self.problem)
             
-            if runs_remaining is not None and runs_remaining >= 0:
-                if self.verbose:
-                    print(f"🚀 Mobiu-Q session started ({runs_remaining} runs remaining) [problem={problem_type}]")
-            else:
-                if self.verbose:
+            if self.verbose:
+                remaining = self._usage_info.get('remaining', 'unknown')
+                tier = self._usage_info.get('tier', 'unknown')
+                
+                if remaining == 'unlimited':
                     print(f"🚀 Mobiu-Q session started (Pro tier) [problem={problem_type}]")
+                elif isinstance(remaining, int):
+                    if remaining <= 2:
+                        print(f"⚠️  Mobiu-Q session started - LOW QUOTA: {remaining} runs remaining!")
+                    else:
+                        print(f"🚀 Mobiu-Q session started ({remaining} runs remaining) [problem={problem_type}]")
+                else:
+                    print(f"🚀 Mobiu-Q session started [problem={problem_type}]")
                 
         except requests.exceptions.RequestException as e:
             if self.offline_fallback:
@@ -348,15 +358,12 @@ class MobiuQCore:
         update = lr * m_hat / (np.sqrt(v_hat) + eps)
         return params - update
     
-    def end(self, force_count: bool = False):
+    def end(self):
         """
         End the optimization session.
         
         Call this when optimization is complete!
-        Sessions ended within 60 seconds with <5 steps don't count against quota.
-        
-        Args:
-            force_count: If True, always count as a run (even within grace period)
+        This is when the run is counted against your quota.
         """
         if self._offline_mode or not self.session_id:
             return
@@ -373,11 +380,22 @@ class MobiuQCore:
             )
             
             data = response.json()
+            self._usage_info = data.get("usage", {})
+            
             if self.verbose:
-                if data.get("counted_as_run"):
-                    print("✅ Session ended (counted as 1 run)")
+                remaining = self._usage_info.get('remaining', 'unknown')
+                used = self._usage_info.get('used', 'unknown')
+                
+                if remaining == 'unlimited':
+                    print(f"✅ Session ended (Pro tier)")
+                elif remaining == 0:
+                    print(f"✅ Session ended")
+                    print(f"❌ Quota exhausted! Upgrade at: https://app.mobiu.ai")
+                elif isinstance(remaining, int) and remaining <= 2:
+                    print(f"✅ Session ended")
+                    print(f"⚠️  Low quota warning: {remaining} runs remaining")
                 else:
-                    print("✅ Session ended (not counted - within grace period)")
+                    print(f"✅ Session ended ({remaining} runs remaining)")
                 
         except Exception as e:
             if self.verbose:
@@ -405,6 +423,40 @@ class MobiuQCore:
         self.lr_history.clear()
         self._start_session()
     
+    def check_usage(self) -> dict:
+        """
+        Check current usage without affecting quota.
+        
+        Returns:
+            dict with: tier, used, limit, remaining
+        """
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                json={
+                    "license_key": self.license_key,
+                    "action": "usage"
+                },
+                timeout=10
+            )
+            data = response.json()
+            if data.get("success"):
+                self._usage_info = data.get("usage", {})
+                return self._usage_info
+        except:
+            pass
+        return {}
+    
+    @property
+    def remaining_runs(self) -> Optional[int]:
+        """Get remaining runs (None if unknown or unlimited)"""
+        if self._usage_info:
+            remaining = self._usage_info.get('remaining')
+            if remaining == 'unlimited':
+                return None
+            return remaining
+        return None
+
     def __del__(self):
         """Auto-end session on garbage collection."""
         try:
