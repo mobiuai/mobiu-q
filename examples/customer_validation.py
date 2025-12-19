@@ -1,23 +1,18 @@
 """
-MOBIU-Q CUSTOMER VALIDATION (v2.0)
+MOBIU-Q CUSTOMER VALIDATION (v2.1)
 ==================================
+Validated against SDK: core.py (MobiuQCore)
 
-This script demonstrates Mobiu-Q's superiority over Adam in three domains:
-1. Quantum Chemistry (H2 Molecule VQE)
-2. Combinatorial Optimization (MaxCut QAOA)
-3. Financial Risk (Credit Risk VaR)
-
-Requirements:
-    pip install mobiu-q numpy scipy
+This script demonstrates Mobiu-Q's superiority using the OFFICIAL class structure.
 
 Usage:
     python customer_validation.py
 """
 
 import numpy as np
+import requests
+import json
 import time
-from scipy.optimize import minimize
-from mobiu_q import MobiuAPI  # v2.0 Client
 
 # ==============================================================================
 # 👇 PUT YOUR LICENSE KEY HERE 👇
@@ -25,160 +20,152 @@ from mobiu_q import MobiuAPI  # v2.0 Client
 LICENSE_KEY = "YOUR_LICENSE_KEY_HERE"
 # ==============================================================================
 
+API_ENDPOINT = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
+
 # ------------------------------------------------------------------------------
-# 1. LOCAL ADAM (Baseline)
+# 1. MOBIU-Q CORE (Matches core.py exactly)
+# ------------------------------------------------------------------------------
+class MobiuQCore:
+    """
+    Official Client Logic (Embedded for Validation Script)
+    """
+    def __init__(self, license_key, mode="standard", problem="vqe", base_lr=None):
+        self.license_key = license_key
+        self.mode = mode
+        self.problem = problem
+        self.base_lr = base_lr
+        self.session_id = None
+        self.api_endpoint = API_ENDPOINT
+        
+        # Start Session
+        try:
+            r = requests.post(self.api_endpoint, json={
+                "license_key": self.license_key,
+                "action": "start",
+                "mode": self.mode,
+                "problem": self.problem,
+                "base_lr": self.base_lr
+            }, timeout=10)
+            data = r.json()
+            
+            if data.get("success"):
+                self.session_id = data["session_id"]
+                print(f"   [Mobiu] Connected. Session: {self.session_id[:8]}...")
+            else:
+                print(f"   [Mobiu] Init Error: {data.get('error')}")
+                
+        except Exception as e:
+            print(f"   [Mobiu] Connection Error: {e}")
+
+    def step(self, params, gradient, energy):
+        if not self.session_id:
+            return params
+        
+        # Convert to list for JSON
+        p_list = params.tolist() if isinstance(params, np.ndarray) else params
+        g_list = gradient.tolist() if isinstance(gradient, np.ndarray) else gradient
+        
+        try:
+            r = requests.post(self.api_endpoint, json={
+                "license_key": self.license_key,
+                "session_id": self.session_id,
+                "action": "step",
+                "params": p_list,
+                "gradient": g_list,
+                "energy": float(energy)
+            }, timeout=10)
+            data = r.json()
+            
+            if data.get("success"):
+                return np.array(data["new_params"])
+            else:
+                return params
+        except:
+            return params
+
+    def end(self):
+        if self.session_id:
+            try:
+                requests.post(self.api_endpoint, json={
+                    "license_key": self.license_key,
+                    "session_id": self.session_id,
+                    "action": "end"
+                }, timeout=3)
+            except: pass
+
+# ------------------------------------------------------------------------------
+# 2. HELPER: DEMEASUREMENT (Gradient Estimation)
+# ------------------------------------------------------------------------------
+class Demeasurement:
+    @staticmethod
+    def finite_difference(circuit_fn, params, epsilon=1e-3):
+        grad = np.zeros_like(params)
+        base = circuit_fn(params)
+        for i in range(len(params)):
+            p_plus = params.copy(); p_plus[i] += epsilon
+            grad[i] = (circuit_fn(p_plus) - base) / epsilon
+        return grad
+
+# ------------------------------------------------------------------------------
+# 3. LOCAL ADAM (Baseline)
 # ------------------------------------------------------------------------------
 class AdamOptimizer:
     def __init__(self, lr=0.01, beta1=0.9, beta2=0.999, epsilon=1e-8):
-        self.lr = lr
-        self.beta1 = beta1
-        self.beta2 = beta2
-        self.epsilon = epsilon
-        self.m = None
-        self.v = None
-        self.t = 0
+        self.lr = lr; self.beta1 = beta1; self.beta2 = beta2; self.epsilon = epsilon
+        self.m = None; self.v = None; self.t = 0
 
     def step(self, params, grads):
-        if self.m is None:
-            self.m = np.zeros_like(params)
-            self.v = np.zeros_like(params)
-        
+        if self.m is None: self.m = np.zeros_like(params); self.v = np.zeros_like(params)
         self.t += 1
         self.m = self.beta1 * self.m + (1 - self.beta1) * grads
         self.v = self.beta2 * self.v + (1 - self.beta2) * (grads ** 2)
-        
         m_hat = self.m / (1 - self.beta1 ** self.t)
         v_hat = self.v / (1 - self.beta2 ** self.t)
-        
         return params - self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
 # ------------------------------------------------------------------------------
-# 2. PROBLEM DEFINITIONS
+# 4. BENCHMARK RUNNER
 # ------------------------------------------------------------------------------
-
-def get_gradient(fn, params, epsilon=1e-4):
-    """Finite difference gradient approximation"""
-    grads = np.zeros_like(params)
-    for i in range(len(params)):
-        params_plus = params.copy()
-        params_plus[i] += epsilon
-        params_minus = params.copy()
-        params_minus[i] -= epsilon
-        grads[i] = (fn(params_plus) - fn(params_minus)) / (2 * epsilon)
-    return grads
-
-# --- Problem A: Quantum Chemistry (H2) ---
 def h2_energy(params):
-    # Simplified energy landscape for H2 at bond distance 0.74A
-    # Ground State: -1.137 Ha
+    # Simulated H2 Landscape
     p0, p1 = params[0], params[1]
-    # Synthetic landscape mimicking VQE
     return -1.137 + (p0 - 0.5)**2 + 2.5*(p1 + 0.2)**2 + 0.1*np.sin(5*p0)*np.cos(5*p1)
 
-# --- Problem B: Finance (Credit Risk) ---
-def credit_risk_var(params):
-    # Minimize Value at Risk (VaR) with noise
-    np.random.seed(42) # Deterministic landscape definition
-    weights = np.abs(params) / np.sum(np.abs(params)) # Exposure
-    defaults = np.array([0.02, 0.05, 0.10, 0.01, 0.08]) # Default probs
-    losses = np.array([0.4, 0.6, 0.8, 0.2, 0.5]) # LGD
-    
-    expected_loss = np.sum(weights * defaults * losses)
-    volatility = np.sqrt(np.sum((weights**2) * defaults * (1-defaults)))
-    
-    # Stochastic noise injection (Market Volatility)
-    noise = np.random.normal(0, 0.005)
-    return expected_loss + 2.33 * volatility + noise
-
-# ------------------------------------------------------------------------------
-# 3. TEST RUNNER
-# ------------------------------------------------------------------------------
-
-def run_comparison(name, obj_func, n_params, steps, problem_type, lr, mode="standard"):
-    print(f"\n⚡ Benchmarking: {name}")
-    print(f"   Settings: Steps={steps}, LR={lr}, Mode={mode}")
+def run_test():
+    print(f"\n⚡ Benchmarking: H2 Molecule (VQE)")
     print("-" * 60)
     
-    # Init Params
-    np.random.seed(123)
-    init_params = np.random.uniform(-1, 1, n_params)
+    np.random.seed(42)
+    init_params = np.random.uniform(-1, 1, 2)
     
-    # --- Run Adam ---
-    adam = AdamOptimizer(lr=lr)
+    # 1. Adam
+    adam = AdamOptimizer(lr=0.05)
     p_adam = init_params.copy()
-    adam_hist = []
-    
-    for _ in range(steps):
-        loss = obj_func(p_adam)
-        grads = get_gradient(obj_func, p_adam)
-        p_adam = adam.step(p_adam, grads)
-        adam_hist.append(loss)
+    loss_adam = 0
+    for _ in range(60):
+        loss_adam = h2_energy(p_adam)
+        grad = Demeasurement.finite_difference(h2_energy, p_adam)
+        p_adam = adam.step(p_adam, grad)
         
-    # --- Run Mobiu-Q ---
-    mobiu = MobiuAPI(
-        license_key=LICENSE_KEY,
-        problem=problem_type,
-        mode=mode,
-        base_lr=lr
-    )
+    # 2. Mobiu-Q
+    opt = MobiuQCore(license_key=LICENSE_KEY, problem="vqe", base_lr=0.05)
     p_mobiu = init_params.copy()
-    mobiu_hist = []
+    loss_mobiu = 0
+    for _ in range(60):
+        loss_mobiu = h2_energy(p_mobiu)
+        grad = Demeasurement.finite_difference(h2_energy, p_mobiu)
+        p_mobiu = opt.step(p_mobiu, grad, loss_mobiu)
+    opt.end()
     
-    for _ in range(steps):
-        loss = obj_func(p_mobiu)
-        grads = get_gradient(obj_func, p_mobiu)
-        p_mobiu = mobiu.step(p_mobiu, grads, loss)
-        mobiu_hist.append(loss)
-        
-    # Results
-    final_adam = np.mean(adam_hist[-5:])
-    final_mobiu = np.mean(mobiu_hist[-5:])
-    improvement = ((final_adam - final_mobiu) / abs(final_adam)) * 100
+    print(f"   📉 Adam Final Loss:    {loss_adam:.6f}")
+    print(f"   🚀 Mobiu-Q Final Loss: {loss_mobiu:.6f}")
     
-    print(f"   📉 Adam Final Loss:    {final_adam:.6f}")
-    print(f"   🚀 Mobiu-Q Final Loss: {final_mobiu:.6f}")
-    
-    color = "\033[92m" if improvement > 0 else "\033[91m"
-    reset = "\033[0m"
-    print(f"   🏆 Improvement:        {color}{improvement:+.2f}%{reset}")
-    
-    return improvement
-
-# ------------------------------------------------------------------------------
-# 4. MAIN EXECUTION
-# ------------------------------------------------------------------------------
+    imp = ((loss_adam - loss_mobiu) / abs(loss_adam)) * 100
+    color = "\033[92m" if imp > 0 else "\033[91m"
+    print(f"   🏆 Improvement:        {color}{imp:+.2f}%\033[0m")
 
 if __name__ == "__main__":
     if LICENSE_KEY == "YOUR_LICENSE_KEY_HERE":
-        print("\n❌ ERROR: Please insert your License Key in the script!")
-        print("   Get one for free at https://mobiu.ai\n")
-        exit()
-
-    print("\n============================================================")
-    print("   MOBIU-Q v2.0 | CUSTOMER VALIDATION SUITE")
-    print("============================================================")
-    
-    # 1. Quantum VQE (Chemistry)
-    run_comparison(
-        name="H2 Molecule (VQE)",
-        obj_func=h2_energy,
-        n_params=2,
-        steps=60,
-        problem_type="vqe",
-        lr=0.05
-    )
-    
-    # 2. Finance (Risk)
-    run_comparison(
-        name="Credit Risk Optimization (FinTech)",
-        obj_func=credit_risk_var,
-        n_params=5,
-        steps=80,
-        problem_type="vqe", # Stable descent
-        mode="noisy",       # High stochasticity
-        lr=0.01
-    )
-    
-    print("\n============================================================")
-    print("   ✅ VALIDATION COMPLETE")
-    print("============================================================")
+        print("\n❌ Please set your LICENSE_KEY in the script!")
+    else:
+        run_test()

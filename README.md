@@ -1,4 +1,4 @@
-# Mobiu-Q (v2.0)
+# Mobiu-Q (v2.1)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
@@ -66,24 +66,25 @@ pip install mobiu-q
 For noisy classical problems (Credit Risk, RL, Engineering).
 
 ```python
-from mobiu_q import MobiuAPI
+from mobiu_q import MobiuQCore, Demeasurement
 
-# Initialize Cloud Brain
-opt = MobiuAPI(
-    license_key="YOUR-KEY",
-    problem="vqe",        # Use 'vqe' logic for stable descent
-    mode="noisy",         # Activates Trust Ratio for noise filtering
-    base_lr=0.05          # Standard stochastic LR
+# Initialize Cloud Optimizer
+opt = MobiuQCore(
+    license_key="YOUR-KEY", 
+    problem="vqe"  # 'vqe' logic (Chemistry/Finance)
 )
 
-# Your Training Loop
+# Optimization Loop
 for step in range(100):
-    # 1. Get noisy metric (e.g., VaR, Loss, Reward)
-    loss = model.evaluate(params)
-    grads = model.gradient(params)
+    # 1. Calculate Gradient (Local)
+    grad = Demeasurement.finite_difference(energy_fn, params)
     
-    # 2. Step with Noise Filtering
-    params = opt.step(params, grads, loss)
+    # 2. Step with Cloud Brain
+    # Note: Pass energy for curvature analysis
+    params = opt.step(params, grad, energy_fn(params))
+
+# End Session
+opt.end()
 
 ```
 
@@ -92,12 +93,34 @@ for step in range(100):
 For problems with many local minima (MaxCut, Rastrigin, Ackley).
 
 ```python
-opt = MobiuAPI(
+opt = MobiuQCore(
     license_key="YOUR-KEY",
-    problem="qaoa",       # Activates Super-Equation (Delta-Dagger)
-    mode="standard",
-    base_lr=0.1           # Higher kinetic energy to escape wells
+    problem="qaoa",  # Activates Super-Equation logic
+    mode="noisy"     # Handles hardware noise
 )
+
+for step in range(150):
+    # SPSA is efficient for QAOA (2 evals only)
+    grad, energy = Demeasurement.spsa(energy_fn, params)
+    params = opt.step(params, grad, energy)
+
+opt.end()
+
+```
+
+### 3. Multi-Seed Experiments
+
+To run multiple seeds as a single billing session:
+
+```python
+opt = MobiuQCore(license_key="YOUR-KEY")
+
+for seed in range(10):
+    opt.new_run()  # Resets state, keeps session open
+    params = init_params(seed)
+    # ... optimization loop ...
+
+opt.end() # Counts as 1 run
 
 ```
 
