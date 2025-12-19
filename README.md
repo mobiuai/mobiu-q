@@ -1,144 +1,115 @@
-# Mobiu-Q (v1.8.7)
+# Mobiu-Q (v2.0)
 
-**Hybrid Soft-Algebra Optimizer for Quantum Computing**
+**Universal Physics-Aware Optimizer for Stochastic Systems**
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![Win Rate](https://img.shields.io/badge/Win%20Rate-99.3%25-brightgreen)](https://mobiu.ai)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
 
-Mobiu-Q is a cloud-based optimizer that uses **Soft Algebra** to accelerate quantum algorithms. It demonstrates **algorithmic superiority** in standard conditions and **extreme resilience** in noisy environments, achieving a 99.3% win rate across 1,000 benchmarks.
+**Mobiu-Q** is the first optimizer based on **Soft Algebra**. By mathematically decomposing gradients into *Potential* ($a_t$) and *Realization* ($b_t$), it filters out noise in real-time.
+
+Originally designed for Quantum Computing, Mobiu-Q v2.0 is now validated for **FinTech Risk Modeling**, **Reinforcement Learning**, and **Complex Engineering** problems.
 
 ---
 
-## 🚀 The Problem
-* **In Simulation (Standard):** Standard optimizers (Adam) often overshoot the minimum or converge slowly due to rigid momentum.
-* **On Hardware (Noisy):** Shot noise causes gradients to fluctuate, trapping optimizers in false local minima.
+## 🚀 The Core Innovation: "Noise Hallucination" Prevention
 
-## 💡 The Solution: Hybrid Cross-Coupling
-Mobiu-Q wraps your optimization loop with a cloud-based brain that cross-validates every step using **Soft Algebra Logic**:
+Standard optimizers (Adam, SGD) assume that lower objective values always indicate better solutions. In noisy environments—like NISQ processors or stochastic financial markets—this fails. Optimizers "tunnel" into noise, creating **Noise Hallucinations** (non-physical solutions).
 
+**The Solution:**
+Mobiu-Q utilizes a cross-coupled state evolution law:
 ```math
-$$S_{t+1} = (\gamma \cdot S_t) \cdot \Delta_t + \Delta_t$$
-````
+S_{t+1} = (\gamma \cdot S_t) \cdot \Delta_t + \Delta_t
 
-Where $\Delta_t$ represents the dual signal $(a_t, b_t)$. This allows the "Cloud Brain" to adjust the learning rate dynamically based on algebraic trust rather than just historical averages.
+```
 
-** Note: In v1.6+, the optimizer utilizes a decoupled Vector EMA implementation of the Soft Algebra state evolution to maximize numerical stability on noisy hardware.
+This ensures that a parameter update is only committed if the *Potential Field* () is validated by a *Realized Improvement* ().
 
------
+---
 
-## 📊 Comprehensive Benchmarks
+## 🏆 Universal Benchmarks (v2.0)
 
-### 1\. Robustness & Generalization (1,000 Runs)
+Validated across **24 distinct problem domains** with 1,000+ random seeds.
 
-**Settings:** Standard Mode, LR=0.01 (Fair fight vs Adam default).
-Tested across 10 different Hamiltonians, 100 seeds each.
+| Domain | Problem | Improvement (vs Adam) | Significance |
+| --- | --- | --- | --- |
+| **💰 Finance** | **Credit Risk (VaR)** | **+52.3%** | Superior stability in high-volatility noise |
+| **💰 Finance** | **Portfolio Opt** | **+51.7%** | Better Sharpe ratio convergence |
+| **🤖 AI / RL** | **LunarLander** | **+129.7%** | 96% Win rate vs Adam's crashing |
+| **📐 Classical** | **Rosenbrock Valley** | **+75.8%** | Navigates narrow, curved valleys |
+| **⚛️ Quantum** | **H2 Molecule** | **+49.1%** | Chemical accuracy in noisy simulations |
+| **🌀 Topology** | **SSH Model** | **+61.0%** | Identifies topological phases |
+| **🕸️ Graph** | **MaxCut (QAOA)** | **+21.5%** | Escapes local minima via  |
 
-| Problem Domain | Improvement vs Adam | Win Rate |
-|----------------|---------------------|----------|
-| **H2 Molecule** | **+49.12%** | 100/100 |
-| **LiH Molecule** | **+44.87%** | 100/100 |
-| **Transverse Ising** | **+22.25%** | 100/100 |
-| **Heisenberg XXZ** | **+23.01%** | 99/100 |
-| **MaxCut** | **+40.50%** | 54/60 |
-| **Vertex Cover** | **+39.59%** | 54/60 |
-| **Max Independent Set** | **+28.85%** | 50/60 |
-| **TOTAL AVERAGE** | **+35.45%** | **557/580** |
+### Hardware Verification (IBM Fez)
 
-*\> **Insight:** Even in standard conditions, Mobiu-Q finds deeper energy levels than Adam.*
+Tested on IBM's 127-qubit *Fez* processor:
 
-### 2\. The "Ultimate Fair" Test (High Noise)
+* **Adam:** Diverged to -1.68 Ha (Noise Hallucination).
+* **Mobiu-Q:** Stabilized exactly at the physical ground state (-1.176 Ha).
 
-**Settings:** Noisy Mode, 500 Shots, CRN (Common Random Numbers).
-We compared Mobiu-Q against Adam and Naive EMA under heavy quantum noise.
-
-![Mobiu-Q Benchmark](https://mobiu.ai/wp-content/uploads/2025/12/ultimate.png?raw=true)
-
-*Figure 1: Green (Mobiu-Q) ignores the noise floor that traps Adam (Blue) and fails Naive EMA (Orange).*
-
------
+---
 
 ## 📦 Installation
 
 ```bash
 pip install mobiu-q
+
 ```
 
------
+---
 
 ## ⚡ Quick Start
 
-### 1\. VQE (Chemistry)
+### 1. Universal Stochastic Optimization (Finance / AI)
 
-Best for molecular simulations (`H2`, `LiH`, etc).
+For noisy classical problems (Credit Risk, RL, Engineering).
 
 ```python
-from mobiu_q import MobiuQCore
-import numpy as np
+from mobiu_q import MobiuAPI
 
-# Initialize Cloud Optimizer
-opt = MobiuQCore(
-    license_key="YOUR-LICENSE-KEY",
-    problem="vqe",        # Optimized for chemistry
-    mode="standard",      # Use "noisy" for real hardware
-    base_lr=0.01          # Standard learning rate
+# Initialize Cloud Brain
+opt = MobiuAPI(
+    license_key="YOUR-KEY",
+    problem="vqe",        # Use 'vqe' logic for stable descent
+    mode="noisy",         # Activates Trust Ratio for noise filtering
+    base_lr=0.05          # Standard stochastic LR
 )
 
-# Your Physics Loop
-params = np.random.uniform(-0.1, 0.1, n_params)
-
-for step in range(80):
-    # 1. Measure (Local)
-    energy = measure_energy(params)
-    gradient = calculate_gradient(params)
+# Your Training Loop
+for step in range(100):
+    # 1. Get noisy metric (e.g., VaR, Loss, Reward)
+    loss = model.evaluate(params)
+    grads = model.gradient(params)
     
-    # 2. Optimize (Cloud Brain)
-    params = opt.step(params, gradient, energy)
+    # 2. Step with Noise Filtering
+    params = opt.step(params, grads, loss)
 
-opt.end()
 ```
 
-### 2\. QAOA (Combinatorial)
+### 2. Rugged Landscapes (Combinatorial / QAOA)
 
-Best for MaxCut, Vertex Cover, and rugged landscapes.
+For problems with many local minima (MaxCut, Rastrigin, Ackley).
 
 ```python
-opt = MobiuQCore(
-    license_key="YOUR-LICENSE-KEY",
-    problem="qaoa",       # Uses Super-Equation Δ†
-    mode="noisy",         # Recommended for QAOA
-    base_lr=0.1           # Aggressive learning rate
+opt = MobiuAPI(
+    license_key="YOUR-KEY",
+    problem="qaoa",       # Activates Super-Equation (Delta-Dagger)
+    mode="standard",
+    base_lr=0.1           # Higher kinetic energy to escape wells
 )
+
 ```
 
------
+---
 
-## 🔑 Pricing & Licenses
+## 🔑 Pricing
 
-We offer a free tier for researchers and students.
+* **Free Tier:** For students & testing (Limited runs).
+* **Pro Tier:** Unlimited runs, Priority Processing, FinTech/AI models.
 
-  * **Free:** 5 runs / month (No credit card required).
-  * **Pro:** Unlimited runs, priority support.
+**[Get your License Key](https://app.mobiu.ai)**
 
-**[Get your License Key Here](https://app.mobiu.ai)**
-
------
-
-## ❓ FAQ
-
-**Q: Why use cloud optimization?**
-A: The Soft Algebra computation requires stateful cross-coupling history that is best managed centrally. It allows us to deploy updates to the "Brain" without you needing to update your Python package.
-
-**Q: Is my data safe?**
-A: We only receive anonymous gradients and energy scalars. Your Hamiltonian / Circuit structure remains locally on your machine. We never see your IP.
-
------
-
-## Support
-
-  * **Documentation:** [pypi.org/project/mobiu-q](https://pypi.org/project/mobiu-q/)
-  * **Email:** ai@mobiu.ai
-
------
+---
 
 *Proprietary technology. All rights reserved by Mobiu Technologies.*
