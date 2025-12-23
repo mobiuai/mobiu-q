@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 2.4.2
+Version: 2.4.3
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Author-email: Mobiu Technologies <ai@mobiu.ai>
 License: Proprietary
@@ -28,51 +28,69 @@ Provides-Extra: full
 Requires-Dist: scipy>=1.7.0; extra == "full"
 Requires-Dist: qiskit>=0.40.0; extra == "full"
 
-# Mobiu-Q (v2.4.2)
+# Mobiu-Q (v2.4.3)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
-[![Win Rate](https://img.shields.io/badge/Win%20Rate-100%25-brightgreen)](https://mobiu.ai)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
 
-**Mobiu-Q** is the first optimizer based on **Soft Algebra**. By mathematically decomposing gradients into *Potential* ($a_t$) and *Realization* ($b_t$), it filters out noise in real-time.
+**Mobiu-Q** is the first optimizer based on **Soft Algebra**, developed by Dr. Moshe Klein and Prof. Oded Maimon. By mathematically decomposing gradients into *Potential* ($a_t$) and *Realization* ($b_t$), it filters out noise in real-time.
 
-Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and **Complex Engineering**.
-
----
-
-## 🚀 What's New in v2.4
-
-- **Reinforcement Learning Support**: New `method="rl"` with +129% improvement on LunarLander
-- **Multi-Optimizer**: Choose from Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
-- **MuJoCo Robotics**: +118% improvement on continuous control tasks
-- **Crypto Trading**: +10.9% profit improvement in high-volatility environments
+Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and **LLM Fine-Tuning**.
 
 ---
 
-## 🏆 Benchmark Results (v2.4)
+## 🚀 What's New in v2.4.3
 
-### Reinforcement Learning
-| Environment | Improvement | p-value | Win Rate |
-|-------------|-------------|---------|----------|
-| **LunarLander-v3** | **+129.7%** | 0.000000 | 96.7% |
-| **MuJoCo InvertedPendulum** | **+118.6%** | 0.001 | 100% |
-| **Crypto Trading** | **+10.9% profit** | 0.005 | 90% |
+- **Comprehensive Benchmark Validation**: 17 problems tested with statistical significance
+- **IBM FakeFez Validation**: +50.9% on VQE, +16.1% on QAOA with real noise models
+- **LLM Soft Prompt Tuning**: Optimize soft prompts for language models
 
-### Quantum Computing
+---
+
+## 🏆 Benchmark Results (v2.4.3)
+
+### Quantum Computing - IBM FakeFez (Real Noise Model)
+
 | Problem | Improvement | p-value | Win Rate |
 |---------|-------------|---------|----------|
-| **VQE H2 (IBM FakeFez)** | **+53.1%** | 0.001 | 100% |
-| **QAOA MaxCut** | **+21.5%** | <0.05 | 85% |
+| **VQE H2 Molecule** | **+50.9%** | 0.0334 | 5/5 ✅ |
+| **QAOA MaxCut 5q** | **+16.1%** | 0.0029 | 9/10 ✅ |
+
+### Quantum Chemistry (Simulation)
+
+| Molecule | Improvement | Significant |
+|----------|-------------|-------------|
+| H2 | +46.6% | ✅ |
+| LiH | +41.4% | ✅ |
+| BeH2 | +37.8% | ✅ |
+| He Atom | +51.2% | ✅ |
+| H3+ Chain | +42.0% | ✅ |
+
+### Condensed Matter Physics
+
+| Model | Improvement | Significant |
+|-------|-------------|-------------|
+| Heisenberg XXZ | +20.8% | ✅ |
+| Transverse Ising | +42.0% | ✅ |
+| XY Model | +60.8% | ✅ |
+| Ferromagnetic Ising | +45.1% | ✅ |
+| Hubbard Dimer | +14.1% | ✅ |
 
 ### Classical Optimization
-| Problem | Improvement | Best Optimizer |
-|---------|-------------|----------------|
-| Rosenbrock Valley | +75.8% | Adam+SA |
-| Credit Risk (VaR) | +52.3% | Adam+SA |
-| Portfolio Optimization | +51.7% | Adam+SA |
-| Ackley Function | +86.3% | **AMSGrad+SA** |
+
+| Problem | Improvement |
+|---------|-------------|
+| Rosenbrock | +65.5% |
+
+### QAOA (Simulation with noise=0.1)
+
+| Problem | Improvement | Win Rate | p-value |
+|---------|-------------|----------|---------|
+| MaxCut 4 qubits | +27.2% | 7/10 | 0.0414 ✅ |
+| MaxCut 5 qubits | +23.7% | 9/10 | 0.0036 ✅ |
+| MaxCut p=3 | +15.6% | 9/10 | 0.0083 ✅ |
 
 ---
 
@@ -81,23 +99,6 @@ Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and
 ```bash
 pip install mobiu-q
 ```
-
-### Verify Installation
-
-Download our test suite to verify everything works:
-
-```bash
-# Quick verification (7 tests, ~2 min)
-python test_quickstart.py
-
-# Full test suite (21 tests, ~15 min)  
-pytest test_mobiu_q_customer.py -v
-
-# Benchmark with statistics
-python benchmark_mobiu_q.py --seeds 10
-```
-
-Test files available at: [github.com/mobiuai/mobiu-q/examples](https://github.com/mobiuai/mobiu-q/tree/main/examples)
 
 ---
 
@@ -117,41 +118,30 @@ for step in range(100):
 opt.end()
 ```
 
-For real quantum hardware, use `mode="hardware"` and SPSA:
-```python
-opt = MobiuQCore(license_key="YOUR-KEY", method="vqe", mode="hardware")
-
-for step in range(100):
-    grad, energy = Demeasurement.spsa(run_circuit, params)
-    params = opt.step(params, grad, energy)
-
-opt.end()
-```
-
 ### 2. QAOA (Combinatorial Optimization)
 
 ```python
-opt = MobiuQCore(license_key="YOUR-KEY", method="qaoa")
+opt = MobiuQCore(
+    license_key="YOUR-KEY",
+    method="qaoa",
+    mode="hardware"  # For quantum hardware / noisy simulation
+)
 
 for step in range(150):
-    grad, energy = Demeasurement.spsa(qaoa_cost_fn, params)
+    grad, energy = Demeasurement.spsa(energy_fn, params)
     params = opt.step(params, grad, energy)
 
 opt.end()
 ```
 
-For hardware: `mode="hardware"`
-
-### 3. Reinforcement Learning (NEW in v2.4)
+### 3. Reinforcement Learning
 
 ```python
 opt = MobiuQCore(license_key="YOUR-KEY", method="rl")
 
 for episode in range(1000):
-    # Run episode, compute policy gradient
     episode_return = run_episode(policy)
     gradient = compute_policy_gradient()
-    
     policy_params = opt.step(policy_params, gradient, episode_return)
 
 opt.end()
@@ -178,33 +168,31 @@ opt.end()  # All 10 seeds count as 1 run
 
 | Method | Mode | Use Case | Default LR |
 |--------|------|----------|------------|
-| `vqe` | `simulation` | Simulated VQE (you control noise) | 0.01 |
-| `vqe` | `hardware` | Real quantum hardware / FakeBackend | 0.02 |
-| `qaoa` | `simulation` | Simulated QAOA (you control noise) | 0.1 |
-| `qaoa` | `hardware` | Real quantum hardware / FakeBackend | 0.1 |
+| `vqe` | `simulation` | Chemistry, physics (clean) | 0.01 |
+| `vqe` | `hardware` | VQE on quantum hardware | 0.02 |
+| `qaoa` | `simulation` | Combinatorial (simulator) | 0.1 |
+| `qaoa` | `hardware` | QAOA on quantum hardware | 0.1 |
 | `rl` | (ignored) | Reinforcement learning | 0.0003 |
 
-> **When to use `hardware` mode:** Use when running on real quantum devices (IBM, IonQ, etc.) 
-> or Qiskit FakeBackends. The optimizer uses higher learning rate to compensate for hardware noise.
+### Optimizers
 
-### Optimizers (NEW in v2.4)
-
-Default: **Adam** (recommended - works best across all methods)
+⚠️ **Optimizer names are case-sensitive!**
 
 ```python
 # Use default (Adam)
 opt = MobiuQCore(method="vqe")
 
-# Try alternative optimizer
+# Alternative optimizer - note exact case!
 opt = MobiuQCore(method="qaoa", base_optimizer="NAdam")
 ```
 
-Available optimizers:
-- **Adam** (default) - Best overall performance
-- **NAdam** - Strong on QAOA problems
-- **AMSGrad** - Best for multimodal functions (Ackley: +86%)
-- **LAMB** - High improvement potential, less stable
-- **SGD** / **Momentum** - Simple baselines
+Available optimizers (exact names):
+- `Adam` (default) - Best overall performance
+- `NAdam` - Strong on QAOA problems
+- `AMSGrad` - Alternative for VQE
+- `SGD` - Simple baseline
+- `Momentum` - SGD with momentum
+- `LAMB` - Large batch training
 
 ### Disable Soft Algebra
 
@@ -223,7 +211,7 @@ opt = MobiuQCore(method="vqe", use_soft_algebra=False)
 
 Standard optimizers (Adam, SGD) assume lower objective values always indicate better solutions. In noisy environments—like NISQ processors or stochastic RL—this fails. Optimizers "tunnel" into noise, creating **Noise Hallucinations**.
 
-**The Solution:** Soft Algebra cross-coupled state evolution:
+**The Solution:** Soft Algebra, developed by Dr. Moshe Klein and Prof. Oded Maimon, uses cross-coupled state evolution:
 
 ```
 S_{t+1} = (γ · S_t) · Δ_t + Δ_t
@@ -235,6 +223,16 @@ Where:
 - `Δ†` (Super-Equation): Emergence detection for QAOA/RL
 
 A parameter update is only committed if the *Potential Field* is validated by *Realized Improvement*.
+
+### SoftNumber Multiplication
+
+The core of Soft Algebra uses nilpotent arithmetic (ε²=0):
+
+```
+(a, b) * (c, d) = (ad + bc, bd)
+```
+
+This allows gradients to carry both magnitude and uncertainty information.
 
 ### Method-Specific Logic
 
@@ -282,7 +280,7 @@ MobiuQCore(
     method: str = "vqe",        # "vqe", "qaoa", or "rl"
     mode: str = "simulation",   # "simulation" or "hardware"
     base_lr: float = None,      # Learning rate (auto if None)
-    base_optimizer: str = "Adam",  # Optimizer choice
+    base_optimizer: str = "Adam",  # Case-sensitive! Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
     use_soft_algebra: bool = True, # Enable/disable SA
     offline_fallback: bool = True  # Fallback to local Adam
 )
@@ -307,73 +305,28 @@ grad, energy = Demeasurement.spsa(energy_fn, params)
 
 ---
 
-## 💡 Best Practices
+## 🔬 Scientific Foundation
 
-### Simulation vs Hardware
+Mobiu-Q is based on **Soft Algebra**, developed by:
 
-**Simulation (clean analytical functions):**
-```python
-opt = MobiuQCore(method="vqe", mode="simulation")
+- **Dr. Moshe Klein** - Mathematician, developer of Soft Logic and Soft Numbers
+- **Prof. Oded Maimon** - Tel Aviv University, Industrial Engineering
 
-for step in range(100):
-    grad = Demeasurement.finite_difference(energy_fn, params)
-    energy = energy_fn(params)
-    params = opt.step(params, grad, energy)
-```
-
-**Hardware (Qiskit FakeBackend / real quantum device):**
-```python
-opt = MobiuQCore(method="vqe", mode="hardware")
-
-for step in range(100):
-    grad, energy = Demeasurement.spsa(run_circuit, params)
-    params = opt.step(params, grad, energy)
-```
-
-The noise comes from the device - you don't add it yourself.
-
-### Recommended Steps
-
-| Problem Type | Recommended Steps |
-|--------------|-------------------|
-| VQE (2-4 params) | 60-100 |
-| VQE (8+ params) | 150-200 |
-| QAOA (p=2-5) | 150-200 |
-| RL (LunarLander) | 500-1000 episodes |
-
-### When Optimization Fails
-
-1. **Check mode matches your environment:**
-   - `mode="simulation"` → Clean simulation only (no added noise)
-   - `mode="hardware"` → Real quantum hardware or noisy simulation (FakeBackend)
-   - Using the wrong mode will give poor results!
-
-2. **Try a different base optimizer:**
-   - Before adjusting learning rate, try: `base_optimizer="NAdam"` or `"AMSGrad"`
-   - Different optimizers work better for different problems
-   - Mobiu-Q wraps these optimizers with Soft Algebra
-
-3. **Don't mix methods with wrong problem types:**
-   - Use `method="vqe"` for VQE/chemistry problems
-   - Use `method="qaoa"` for QAOA/combinatorial problems
-   - Mixing them (e.g., QAOA method for VQE problem) may not work well
-
-4. **Verify your problem setup:**
-   - Check Hamiltonian coefficients are correct
-   - Verify ground state energy is computed correctly
-   - Ensure ansatz can actually reach the ground state
-   - Test with a simple grid search first
+The theoretical foundations combine:
+- Nilpotent arithmetic (ε²=0)
+- Cross-coupled dynamical systems
+- Information-theoretic trust measures
 
 ---
 
-## 🔬 Citation
+## 📖 Citation
 
 If you use Mobiu-Q in research:
 
 ```bibtex
 @software{mobiu_q,
   title = {Mobiu-Q: Soft Algebra Optimizer for Stochastic Systems},
-  author = {Mobiu Technologies},
+  author = {Angel, Ido and Klein, Moshe and Maimon, Oded},
   year = {2024},
   url = {https://mobiu.ai}
 }

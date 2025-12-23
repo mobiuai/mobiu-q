@@ -1,6 +1,6 @@
 # mobiu_q/catalog.py
 # ==================
-# Mobiu-Q Problem Catalog (v2.4.2)
+# Mobiu-Q Problem Catalog (v2.4.3)
 # Universal Stochastic Optimization: Quantum, Classical, Finance, AI, RL
 # 
 # Changes in v2.4:

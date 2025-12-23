@@ -1,5 +1,5 @@
 """
-MOBIU-Q CUSTOMER VALIDATION (v2.4.2)
+MOBIU-Q CUSTOMER VALIDATION (v2.4.3)
 ==================================
 Validated against SDK: core.py (MobiuQCore)
 
