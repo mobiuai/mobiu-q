@@ -1,4 +1,4 @@
-# Mobiu-Q (v2.4)
+# Mobiu-Q (v2.4.1)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
@@ -51,6 +51,23 @@ Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and
 pip install mobiu-q
 ```
 
+### Verify Installation
+
+Download our test suite to verify everything works:
+
+```bash
+# Quick verification (7 tests, ~2 min)
+python test_quickstart.py
+
+# Full test suite (21 tests, ~15 min)  
+pytest test_mobiu_q_customer.py -v
+
+# Benchmark with statistics
+python benchmark_mobiu_q.py --seeds 10
+```
+
+Test files available at: [github.com/mobiuai/mobiu-q/examples](https://github.com/mobiuai/mobiu-q/tree/main/examples)
+
 ---
 
 ## ⚡ Quick Start
@@ -69,21 +86,30 @@ for step in range(100):
 opt.end()
 ```
 
-### 2. QAOA (Combinatorial Optimization)
-
+For real quantum hardware, use `mode="hardware"` and SPSA:
 ```python
-opt = MobiuQCore(
-    license_key="YOUR-KEY",
-    method="qaoa",
-    mode="hardware"  # For quantum hardware / noisy simulation
-)
+opt = MobiuQCore(license_key="YOUR-KEY", method="vqe", mode="hardware")
 
-for step in range(150):
-    grad, energy = Demeasurement.spsa(energy_fn, params)
+for step in range(100):
+    grad, energy = Demeasurement.spsa(run_circuit, params)
     params = opt.step(params, grad, energy)
 
 opt.end()
 ```
+
+### 2. QAOA (Combinatorial Optimization)
+
+```python
+opt = MobiuQCore(license_key="YOUR-KEY", method="qaoa")
+
+for step in range(150):
+    grad, energy = Demeasurement.spsa(qaoa_cost_fn, params)
+    params = opt.step(params, grad, energy)
+
+opt.end()
+```
+
+For hardware: `mode="hardware"`
 
 ### 3. Reinforcement Learning (NEW in v2.4)
 
@@ -121,11 +147,14 @@ opt.end()  # All 10 seeds count as 1 run
 
 | Method | Mode | Use Case | Default LR |
 |--------|------|----------|------------|
-| `vqe` | `simulation` | Chemistry, physics (clean) | 0.01 |
-| `vqe` | `hardware` | VQE on quantum hardware | 0.02 |
-| `qaoa` | `simulation` | Combinatorial (simulator) | 0.1 |
-| `qaoa` | `hardware` | QAOA on quantum hardware | 0.1 |
+| `vqe` | `simulation` | Simulated VQE (you control noise) | 0.01 |
+| `vqe` | `hardware` | Real quantum hardware / FakeBackend | 0.02 |
+| `qaoa` | `simulation` | Simulated QAOA (you control noise) | 0.1 |
+| `qaoa` | `hardware` | Real quantum hardware / FakeBackend | 0.1 |
 | `rl` | (ignored) | Reinforcement learning | 0.0003 |
+
+> **When to use `hardware` mode:** Use when running on real quantum devices (IBM, IonQ, etc.) 
+> or Qiskit FakeBackends. The optimizer uses higher learning rate to compensate for hardware noise.
 
 ### Optimizers (NEW in v2.4)
 
@@ -244,6 +273,65 @@ grad = Demeasurement.parameter_shift(circuit_fn, params)
 # For QAOA/hardware (noisy)
 grad, energy = Demeasurement.spsa(energy_fn, params)
 ```
+
+---
+
+## 💡 Best Practices
+
+### Simulation vs Hardware
+
+**Simulation (clean analytical functions):**
+```python
+opt = MobiuQCore(method="vqe", mode="simulation")
+
+for step in range(100):
+    grad = Demeasurement.finite_difference(energy_fn, params)
+    energy = energy_fn(params)
+    params = opt.step(params, grad, energy)
+```
+
+**Hardware (Qiskit FakeBackend / real quantum device):**
+```python
+opt = MobiuQCore(method="vqe", mode="hardware")
+
+for step in range(100):
+    grad, energy = Demeasurement.spsa(run_circuit, params)
+    params = opt.step(params, grad, energy)
+```
+
+The noise comes from the device - you don't add it yourself.
+
+### Recommended Steps
+
+| Problem Type | Recommended Steps |
+|--------------|-------------------|
+| VQE (2-4 params) | 60-100 |
+| VQE (8+ params) | 150-200 |
+| QAOA (p=2-5) | 150-200 |
+| RL (LunarLander) | 500-1000 episodes |
+
+### When Optimization Fails
+
+1. **Check mode matches your environment:**
+   - `mode="simulation"` → Clean simulation only (no added noise)
+   - `mode="hardware"` → Real quantum hardware or noisy simulation (FakeBackend)
+   - Using the wrong mode will give poor results!
+
+2. **Try a different base optimizer:**
+   - Before adjusting learning rate, try: `base_optimizer="NAdam"` or `"AMSGrad"`
+   - Different optimizers work better for different problems
+   - Mobiu-Q wraps these optimizers with Soft Algebra
+
+3. **Don't mix methods with wrong problem types:**
+   - Use `method="vqe"` for VQE/chemistry problems
+   - Use `method="qaoa"` for QAOA/combinatorial problems
+   - Mixing them (e.g., QAOA method for VQE problem) may not work well
+
+4. **Verify your problem setup:**
+   - Check Hamiltonian coefficients are correct
+   - Verify ground state energy is computed correctly
+   - Ensure ansatz can actually reach the ground state
+   - Test with a simple grid search first
 
 ---
 

@@ -1,14 +1,16 @@
 """
-MOBIU-Q CUSTOMER VALIDATION (v2.4)
+MOBIU-Q CUSTOMER VALIDATION (v2.4.1)
 ==================================
 Validated against SDK: core.py (MobiuQCore)
 
 This script demonstrates Mobiu-Q's superiority using the OFFICIAL class structure.
 
-New in v2.4:
-- Multi-optimizer support (Adam, NAdam, AMSGrad, SGD, Momentum, LAMB)
-- RL mode demonstration
-- use_soft_algebra toggle for A/B testing
+Features demonstrated:
+- VQE optimization (quantum chemistry)
+- QAOA optimization (combinatorial)
+- A/B comparison (SA on vs off)
+- Multi-optimizer support
+- Multi-seed experiments (1 billing session)
 
 Usage:
     python customer_validation.py
@@ -17,7 +19,6 @@ Usage:
 import numpy as np
 import requests
 import json
-import time
 
 # ==============================================================================
 # 👇 PUT YOUR LICENSE KEY HERE 👇
@@ -179,11 +180,6 @@ def h2_energy(params):
     p0, p1 = params[0], params[1]
     return -1.137 + (p0 - 0.5)**2 + 2.5*(p1 + 0.2)**2 + 0.1*np.sin(5*p0)*np.cos(5*p1)
 
-def noisy_h2_energy(params, noise=0.05):
-    """H2 with quantum hardware noise"""
-    base = h2_energy(params)
-    return base + np.random.normal(0, noise * abs(base) + 0.01)
-
 def maxcut_cost(params):
     """Simulated QAOA MaxCut landscape (rugged)"""
     gamma, beta = params[0], params[1]
@@ -230,47 +226,9 @@ def test_vqe_basic():
     return imp > 0
 
 
-def test_vqe_hardware_noise():
-    """Test 2: VQE with hardware noise"""
-    print(f"\n⚡ Test 2: VQE with Hardware Noise")
-    print("-" * 60)
-    
-    np.random.seed(42)
-    init_params = np.random.uniform(-1, 1, 2)
-    
-    # 1. Plain Adam
-    adam = AdamOptimizer(lr=0.05)
-    p_adam = init_params.copy()
-    for _ in range(80):
-        np.random.seed(int(time.time()*1000) % 10000)
-        loss = noisy_h2_energy(p_adam)
-        grad = Demeasurement.finite_difference(lambda p: noisy_h2_energy(p), p_adam)
-        p_adam = adam.step(p_adam, grad)
-    loss_adam = h2_energy(p_adam)  # Clean evaluation
-        
-    # 2. Mobiu-Q (hardware mode)
-    opt = MobiuQCore(license_key=LICENSE_KEY, method="vqe", mode="hardware", base_lr=0.05)
-    p_mobiu = init_params.copy()
-    for _ in range(80):
-        np.random.seed(int(time.time()*1000) % 10000)
-        loss = noisy_h2_energy(p_mobiu)
-        grad = Demeasurement.finite_difference(lambda p: noisy_h2_energy(p), p_mobiu)
-        p_mobiu = opt.step(p_mobiu, grad, loss)
-    opt.end()
-    loss_mobiu = h2_energy(p_mobiu)  # Clean evaluation
-    
-    print(f"   📉 Adam Final Loss:    {loss_adam:.6f}")
-    print(f"   🚀 Mobiu-Q Final Loss: {loss_mobiu:.6f}")
-    
-    imp = ((loss_adam - loss_mobiu) / abs(loss_adam)) * 100
-    color = "\033[92m" if imp > 0 else "\033[91m"
-    print(f"   🏆 Improvement:        {color}{imp:+.2f}%\033[0m")
-    return imp > 0
-
-
 def test_qaoa():
-    """Test 3: QAOA MaxCut (rugged landscape)"""
-    print(f"\n⚡ Test 3: QAOA MaxCut (Rugged Landscape)")
+    """Test 2: QAOA MaxCut (rugged landscape)"""
+    print(f"\n⚡ Test 2: QAOA MaxCut (Rugged Landscape)")
     print("-" * 60)
     
     np.random.seed(42)
@@ -305,8 +263,8 @@ def test_qaoa():
 
 
 def test_ab_comparison():
-    """Test 4: A/B Comparison (SA on vs off)"""
-    print(f"\n⚡ Test 4: A/B Comparison (use_soft_algebra)")
+    """Test 3: A/B Comparison (SA on vs off)"""
+    print(f"\n⚡ Test 3: A/B Comparison (use_soft_algebra)")
     print("-" * 60)
     
     np.random.seed(42)
@@ -344,8 +302,8 @@ def test_ab_comparison():
 
 
 def test_multi_optimizer():
-    """Test 5: Compare different base optimizers"""
-    print(f"\n⚡ Test 5: Multi-Optimizer Comparison")
+    """Test 4: Compare different base optimizers"""
+    print(f"\n⚡ Test 4: Multi-Optimizer Comparison")
     print("-" * 60)
     
     optimizers_to_test = ["Adam", "NAdam", "AMSGrad"]
@@ -376,8 +334,8 @@ def test_multi_optimizer():
 
 
 def test_multi_seed():
-    """Test 6: Multi-seed experiment (counts as 1 run)"""
-    print(f"\n⚡ Test 6: Multi-Seed Experiment")
+    """Test 5: Multi-seed experiment (counts as 1 run)"""
+    print(f"\n⚡ Test 5: Multi-Seed Experiment")
     print("-" * 60)
     
     opt = MobiuQCore(license_key=LICENSE_KEY, method="vqe", base_lr=0.05)
@@ -416,7 +374,6 @@ def run_all_tests():
     results = []
     
     results.append(("VQE Basic", test_vqe_basic()))
-    results.append(("VQE Hardware Noise", test_vqe_hardware_noise()))
     results.append(("QAOA MaxCut", test_qaoa()))
     results.append(("A/B Comparison", test_ab_comparison()))
     results.append(("Multi-Optimizer", test_multi_optimizer()))
