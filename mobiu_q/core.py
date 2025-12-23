@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum variational algorithms and RL.
 
-Version: 2.4.1 - Multi-Optimizer + RL Support
+Version: 2.4.2 - Multi-Optimizer + RL Support
 - method='vqe'/'qaoa'/'rl'
 - mode='simulation'/'hardware'
 - base_optimizer='Adam'/'NAdam'/'AMSGrad'/'SGD'/'Momentum'/'LAMB'

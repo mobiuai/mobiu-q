@@ -5,7 +5,7 @@ Mobiu-Q — Soft Algebra Optimizer for Quantum, RL & Complex Optimization
 A next-generation optimizer built on Soft Algebra and Demeasurement theory,
 enabling stable and efficient optimization in noisy, stochastic environments.
 
-Version: 2.4.1
+Version: 2.4.2
 
 What's New in v2.4:
 - Reinforcement Learning support (method="rl")

@@ -1,4 +1,4 @@
-# Mobiu-Q (v2.4.1)
+# Mobiu-Q (v2.4.2)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
@@ -37,11 +37,12 @@ Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and
 | **QAOA MaxCut** | **+21.5%** | <0.05 | 85% |
 
 ### Classical Optimization
-| Problem | Improvement |
-|---------|-------------|
-| Rosenbrock Valley | +75.8% |
-| Credit Risk (VaR) | +52.3% |
-| Portfolio Optimization | +51.7% |
+| Problem | Improvement | Best Optimizer |
+|---------|-------------|----------------|
+| Rosenbrock Valley | +75.8% | Adam+SA |
+| Credit Risk (VaR) | +52.3% | Adam+SA |
+| Portfolio Optimization | +51.7% | Adam+SA |
+| Ackley Function | +86.3% | **AMSGrad+SA** |
 
 ---
 
@@ -171,7 +172,7 @@ opt = MobiuQCore(method="qaoa", base_optimizer="NAdam")
 Available optimizers:
 - **Adam** (default) - Best overall performance
 - **NAdam** - Strong on QAOA problems
-- **AMSGrad** - May outperform on VQE simulation
+- **AMSGrad** - Best for multimodal functions (Ackley: +86%)
 - **LAMB** - High improvement potential, less stable
 - **SGD** / **Momentum** - Simple baselines
 
