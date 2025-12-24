@@ -1,4 +1,4 @@
-# Mobiu-Q (v2.5.0)
+# Mobiu-Q (v2.5.1)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 

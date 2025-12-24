@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 2.5
+Version: 2.5.1
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Home-page: https://mobiu.ai
 Author: Mobiu Technologies
@@ -33,7 +33,7 @@ Dynamic: author
 Dynamic: home-page
 Dynamic: requires-python
 
-# Mobiu-Q (v2.5.0)
+# Mobiu-Q (v2.5.1)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
