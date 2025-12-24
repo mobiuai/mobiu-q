@@ -40,7 +40,7 @@ except ImportError:
 # ==============================================================================
 
 MOBIU_API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "e756ce65-186e-4747-aaaf-5a1fb1473b7e"
+LICENSE_KEY = "YOUR_LICENCE"
 
 # Test configurations
 QUBIT_CONFIGS = [2, 4, 6]

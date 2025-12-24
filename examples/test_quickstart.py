@@ -215,7 +215,7 @@ def test_vqe_h2():
     from mobiu_q import MobiuQCore, Demeasurement
     
     try:
-        opt = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe", mode="simulation")
+        opt = MobiuQCore(license_key="YOUR_LICENCE", method="vqe", mode="simulation")
         
         np.random.seed(42)
         params = np.random.uniform(-np.pi, np.pi, 2)
@@ -278,7 +278,7 @@ def test_vqe_lih():
     from mobiu_q import MobiuQCore, Demeasurement
     
     try:
-        opt = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe")
+        opt = MobiuQCore(license_key="YOUR_LICENCE", method="vqe")
         
         np.random.seed(123)
         params = np.random.uniform(-np.pi, np.pi, 2)
@@ -336,7 +336,7 @@ def test_vqe_transverse_ising():
     from mobiu_q import MobiuQCore, Demeasurement
     
     try:
-        opt = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe")
+        opt = MobiuQCore(license_key="YOUR_LICENCE", method="vqe")
         
         np.random.seed(456)
         params = np.random.uniform(-np.pi, np.pi, 2)
@@ -393,7 +393,7 @@ def test_qaoa_maxcut():
     from mobiu_q import MobiuQCore, Demeasurement
     
     try:
-        opt = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="qaoa")
+        opt = MobiuQCore(license_key="YOUR_LICENCE", method="qaoa")
         
         np.random.seed(42)
         p = 2
@@ -444,7 +444,7 @@ def test_soft_algebra_comparison():
             np.random.seed(42)
             
             opt = MobiuQCore(
-                license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e",
+                license_key="YOUR_LICENCE",
                 method="vqe",
                 use_soft_algebra=use_sa
             )
@@ -497,7 +497,7 @@ def test_multi_seed():
     from mobiu_q import MobiuQCore, Demeasurement
     
     try:
-        opt = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe")
+        opt = MobiuQCore(license_key="YOUR_LICENCE", method="vqe")
         
         all_gaps = []
         

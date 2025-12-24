@@ -10,7 +10,7 @@ import numpy as np
 import os
 from typing import Callable, List, Tuple
 
-LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "e756ce65-186e-4747-aaaf-5a1fb1473b7e")
+LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "YOUR_LICENCE")
 
 @pytest.fixture
 def license_key():

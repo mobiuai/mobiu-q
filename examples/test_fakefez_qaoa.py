@@ -23,7 +23,7 @@ from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime.fake_provider import FakeFez
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "e756ce65-186e-4747-aaaf-5a1fb1473b7e"  # Replace with your key
+LICENSE_KEY = "YOUR_LICENCE"  # Replace with your key
 
 # ==============================================================================
 # SETTINGS

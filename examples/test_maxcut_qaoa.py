@@ -17,7 +17,7 @@ import requests
 from typing import Callable, Tuple, List
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "e756ce65-186e-4747-aaaf-5a1fb1473b7e"  # Replace with your key
+LICENSE_KEY = "YOUR_LICENCE"  # Replace with your key
 
 # ==============================================================================
 # QAOA QUANTUM SIMULATION (From verified catalog)

@@ -252,7 +252,7 @@ def run_benchmark(problem: Problem, n_seeds: int, verbose: bool = True) -> Dict:
         
         # Adam (no Soft Algebra)
         np.random.seed(seed * 1000)
-        adam = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe", use_soft_algebra=False)
+        adam = MobiuQCore(license_key="YOUR_LICENCE", method="vqe", use_soft_algebra=False)
         params = init_params.copy()
         clean_energies = []
         
@@ -270,7 +270,7 @@ def run_benchmark(problem: Problem, n_seeds: int, verbose: bool = True) -> Dict:
         
         # Mobiu (with Soft Algebra)
         np.random.seed(seed * 1000)
-        mobiu = MobiuQCore(license_key="e756ce65-186e-4747-aaaf-5a1fb1473b7e", method="vqe", use_soft_algebra=True)
+        mobiu = MobiuQCore(license_key="YOUR_LICENCE", method="vqe", use_soft_algebra=True)
         params = init_params.copy()
         clean_energies = []
         

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 2.5.2
+Version: 2.5.3
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Home-page: https://mobiu.ai
 Author: Mobiu Technologies
@@ -41,15 +41,15 @@ Dynamic: requires-python
 
 **Mobiu-Q** wraps your existing optimizer with **Soft Algebra** to filter noise and improve convergence. Same API, better results.
 
-Works across **Quantum Computing**, **Reinforcement Learning**, **LLM Fine-tuning**, and **FinTech**.
+Works across **Quantum Computing**, **Reinforcement Learning**, **LLM Fine-tuning**, **Materials Science**, and **FinTech**.
 
 ---
 
-## 🚀 What's New in v2.5.2
+## 🚀 What's New in v2.5.3
 
-- **LLM Fine-tuning Support**: New `method="adaptive"` with +23.3% improvement on full fine-tuning
+- **LLM Fine-tuning Support**: +23.3% improvement on full fine-tuning, +97% on LoRA
+- **Materials Science**: +98% on Bulk Modulus, +67% on Band Gap prediction
 - **Noise Robustness**: +32.5% more robust to quantum hardware noise
-- **New Method Names**: `standard`, `deep`, `adaptive` (legacy names still supported)
 - **Multi-Optimizer**: Choose from Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
 
 ---
@@ -58,10 +58,20 @@ Works across **Quantum Computing**, **Reinforcement Learning**, **LLM Fine-tunin
 
 All benchmarks compare **Optimizer + Soft Algebra** vs **Optimizer alone**. Same learning rate, same seeds, fair A/B test.
 
-### 🤖 LLM Fine-tuning (NEW)
+### 🔬 Materials Science (NEW)
 | Task | Improvement | p-value | Win Rate |
 |------|-------------|---------|----------|
+| **Bulk Modulus (GPa)** | **+98.3%** | <0.001 | 100% |
+| **Band Gap (eV)** | **+66.8%** | <0.001 | 100% |
+| **Formation Energy** | **+26.9%** | <0.001 | 100% |
+
+### 🤖 LLM Fine-tuning
+| Task | Improvement | p-value | Win Rate |
+|------|-------------|---------|----------|
+| **LoRA r16 + Momentum** | **+97.6%** | <0.001 | 100% |
+| **LoRA r32 + SGD** | **+90.2%** | <0.001 | 100% |
 | **Full Fine-tuning** | **+23.3%** | 0.002 | 100% |
+| **GPT-2 Medium (PPL)** | **+21.2%** | <0.001 | 100% |
 | **Soft Prompt Tuning** | **+18.1%** | <0.05 | 100% |
 
 ### 🎮 Reinforcement Learning
@@ -107,20 +117,19 @@ pip install mobiu-q
 
 ## ⚡ Quick Start
 
-### 1. LLM Fine-tuning (NEW)
+### 1. Materials Science (NEW)
 
 ```python
 from mobiu_q import MobiuQCore
 
-# Wrap your training loop
 opt = MobiuQCore(
     license_key="YOUR-KEY",
-    method="adaptive",      # Best for LLM/RL
-    base_optimizer="momentum"
+    method="standard",
+    base_optimizer="adam"
 )
 
-for epoch in range(num_epochs):
-    loss = train_step(model, batch)
+for epoch in range(100):
+    loss = compute_property_loss(model, batch)
     gradient = compute_gradients()
     
     params = opt.step(params, gradient, loss)
@@ -128,7 +137,25 @@ for epoch in range(num_epochs):
 opt.end()
 ```
 
-### 2. Reinforcement Learning
+### 2. LoRA Fine-tuning
+
+```python
+opt = MobiuQCore(
+    license_key="YOUR-KEY",
+    method="adaptive",
+    base_optimizer="momentum"  # Recommended for LoRA
+)
+
+for step in range(1000):
+    loss = lora_forward(model, batch)
+    gradient = compute_lora_gradients()
+    
+    params = opt.step(params, gradient, loss)
+
+opt.end()
+```
+
+### 3. Reinforcement Learning
 
 ```python
 opt = MobiuQCore(
@@ -146,14 +173,14 @@ for episode in range(1000):
 opt.end()
 ```
 
-### 3. VQE (Quantum Chemistry)
+### 4. VQE (Quantum Chemistry)
 
 ```python
 from mobiu_q import MobiuQCore, Demeasurement
 
 opt = MobiuQCore(
     license_key="YOUR-KEY",
-    method="standard"  # Best for VQE
+    method="standard"
 )
 
 for step in range(100):
@@ -163,13 +190,13 @@ for step in range(100):
 opt.end()
 ```
 
-### 4. QAOA (Noisy Hardware)
+### 5. QAOA (Noisy Hardware)
 
 ```python
 opt = MobiuQCore(
     license_key="YOUR-KEY",
-    method="deep",       # Best for QAOA
-    mode="hardware"      # For quantum hardware / noisy simulation
+    method="deep",
+    mode="hardware"
 )
 
 for step in range(150):
@@ -187,9 +214,9 @@ opt.end()
 
 | Method | Best For | Description |
 |--------|----------|-------------|
-| `standard` | VQE, Chemistry | Trust Ratio + Gradient Warping |
+| `standard` | VQE, Chemistry, Materials | Trust Ratio + Gradient Warping |
 | `deep` | QAOA, Noisy Hardware | Super-Equation Δ† for emergence detection |
-| `adaptive` | RL, LLM, Trading | Trust + Emergence + Warping combined |
+| `adaptive` | RL, LLM, LoRA, Trading | Trust + Emergence + Warping combined |
 
 ### Base Optimizers
 
@@ -209,6 +236,73 @@ opt = MobiuQCore(
 |------|-------------|
 | `simulation` | Clean quantum simulation (default) |
 | `hardware` | Noisy quantum hardware |
+
+---
+
+## 🛠️ Troubleshooting
+
+If optimization is not improving or diverging, try these adjustments:
+
+### 1. Switch Base Optimizer
+
+Different optimizers work better for different problems:
+
+| Problem Type | Recommended Optimizer |
+|--------------|----------------------|
+| LoRA / LLM | `momentum` (not SGD) |
+| VQE / Chemistry | `adam` |
+| QAOA | `nadam` |
+| RL | `momentum` |
+| Materials Science | `adam` |
+
+```python
+# If Adam isn't working, try Momentum:
+opt = MobiuQCore(license_key="KEY", base_optimizer="momentum")
+
+# If Momentum isn't working, try NAdam:
+opt = MobiuQCore(license_key="KEY", base_optimizer="nadam")
+```
+
+### 2. Switch Method
+
+| If This Fails | Try This |
+|---------------|----------|
+| `standard` | `adaptive` |
+| `adaptive` | `deep` |
+| `deep` | `standard` |
+
+```python
+# If standard isn't working for your problem:
+opt = MobiuQCore(license_key="KEY", method="adaptive")
+```
+
+### 3. Switch Mode
+
+For quantum problems, if `simulation` mode isn't working:
+
+```python
+# Try hardware mode (more aggressive noise filtering):
+opt = MobiuQCore(license_key="KEY", mode="hardware")
+```
+
+### 4. Adjust Learning Rate
+
+Soft Algebra works best with moderate learning rates:
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Diverging | Lower LR by 2-5x |
+| No improvement | Increase LR by 2x |
+| LoRA specifically | Use LR=0.01-0.03 |
+
+### 5. Common Fixes by Domain
+
+| Domain | Common Issue | Fix |
+|--------|--------------|-----|
+| **LoRA** | SGD + high LR diverges | Use `momentum` + LR=0.02 |
+| **Drug Discovery** | BCE loss unstable | Use `adam` + `standard` method |
+| **Small Batch LLM** | High variance | Increase batch size or use `deep` method |
+| **Classification** | Cross-entropy issues | Use `adam` + lower LR |
 
 ---
 
@@ -259,12 +353,13 @@ Get your license key at [app.mobiu.ai](https://app.mobiu.ai)
 |--------|-------------|--------------|
 | **RL (LunarLander)** | +129.7% | vs Momentum |
 | **RL (MuJoCo)** | +118.6% | vs Momentum |
+| **Materials (Bulk Modulus)** | +98.3% | vs Adam |
+| **LoRA (r16 Momentum)** | +97.6% | vs Momentum |
+| **Materials (Band Gap)** | +66.8% | vs Adam |
 | **Quantum (XY Model)** | +60.8% | vs Adam |
-| **Quantum (He Atom)** | +51.2% | vs Adam |
 | **Noise Robustness** | +32.5% | vs Momentum |
 | **QAOA MaxCut** | +27.2% | vs NAdam |
 | **LLM Full Fine-tune** | +23.3% | vs Momentum |
-| **LLM Soft Prompts** | +18.1% | vs Momentum |
 | **Crypto Trading** | +10.9% | vs Momentum |
 
 **Overall Win Rate: 80%** across all benchmarks.
