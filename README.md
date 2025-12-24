@@ -1,4 +1,4 @@
-# Mobiu-Q
+# Mobiu-Q V2.5.4
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![Win Rate](https://img.shields.io/badge/Win%20Rate-80%25-brightgreen)](https://mobiu.ai)
@@ -10,7 +10,7 @@ Works across **Quantum Computing**, **Reinforcement Learning**, **LLM Fine-tunin
 
 ---
 
-## 🚀 What's New in v2.5.3
+## 🚀 What's New in v2.5
 
 - **LLM Fine-tuning Support**: +23.3% improvement on full fine-tuning, +97% on LoRA
 - **Materials Science**: +98% on Bulk Modulus, +67% on Band Gap prediction
@@ -90,7 +90,7 @@ from mobiu_q import MobiuQCore
 opt = MobiuQCore(
     license_key="YOUR-KEY",
     method="standard",
-    base_optimizer="adam"
+    base_optimizer="Adam"
 )
 
 for epoch in range(100):
@@ -108,7 +108,7 @@ opt.end()
 opt = MobiuQCore(
     license_key="YOUR-KEY",
     method="adaptive",
-    base_optimizer="momentum"  # Recommended for LoRA
+    base_optimizer="Momentum"  # Recommended for LoRA
 )
 
 for step in range(1000):
@@ -126,7 +126,7 @@ opt.end()
 opt = MobiuQCore(
     license_key="YOUR-KEY",
     method="adaptive",
-    base_optimizer="momentum"
+    base_optimizer="Momentum"
 )
 
 for episode in range(1000):
@@ -185,13 +185,15 @@ opt.end()
 
 ### Base Optimizers
 
-Choose from: `adam`, `momentum`, `sgd`, `nadam`, `amsgrad`, `lamb`
+Choose from: `Adam`, `Momentum`, `SGD`, `NAdam`, `AMSGrad`, `LAMB`
+
+**Important:** Optimizer names are case-sensitive!
 
 ```python
 opt = MobiuQCore(
     license_key="YOUR-KEY",
     method="adaptive",
-    base_optimizer="momentum"  # Best for RL/LLM
+    base_optimizer="Momentum"  # Best for RL/LLM
 )
 ```
 
@@ -214,18 +216,18 @@ Different optimizers work better for different problems:
 
 | Problem Type | Recommended Optimizer |
 |--------------|----------------------|
-| LoRA / LLM | `momentum` (not SGD) |
-| VQE / Chemistry | `adam` |
-| QAOA | `nadam` |
-| RL | `momentum` |
-| Materials Science | `adam` |
+| LoRA / LLM | `Momentum` (not SGD) |
+| VQE / Chemistry | `Adam` |
+| QAOA | `NAdam` |
+| RL | `Momentum` |
+| Materials Science | `Adam` |
 
 ```python
 # If Adam isn't working, try Momentum:
-opt = MobiuQCore(license_key="KEY", base_optimizer="momentum")
+opt = MobiuQCore(license_key="KEY", base_optimizer="Momentum")
 
 # If Momentum isn't working, try NAdam:
-opt = MobiuQCore(license_key="KEY", base_optimizer="nadam")
+opt = MobiuQCore(license_key="KEY", base_optimizer="NAdam")
 ```
 
 ### 2. Switch Method
@@ -264,10 +266,10 @@ Soft Algebra works best with moderate learning rates:
 
 | Domain | Common Issue | Fix |
 |--------|--------------|-----|
-| **LoRA** | SGD + high LR diverges | Use `momentum` + LR=0.02 |
-| **Drug Discovery** | BCE loss unstable | Use `adam` + `standard` method |
+| **LoRA** | SGD + high LR diverges | Use `Momentum` + LR=0.02 |
+| **Drug Discovery** | BCE loss unstable | Use `Adam` + `standard` method |
 | **Small Batch LLM** | High variance | Increase batch size or use `deep` method |
-| **Classification** | Cross-entropy issues | Use `adam` + lower LR |
+| **Classification** | Cross-entropy issues | Use `Adam` + lower LR |
 
 ---
 
