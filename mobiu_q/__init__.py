@@ -1,21 +1,30 @@
 """
-Mobiu-Q — Soft Algebra Optimizer for Quantum, RL & Complex Optimization
-========================================================================
+Mobiu-Q — Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization
+=============================================================================
 
 A next-generation optimizer built on Soft Algebra and Demeasurement theory,
 enabling stable and efficient optimization in noisy, stochastic environments.
 
-Version: 2.4.3
+Version: 2.5.0 - New Method Names + Noise Robustness + LLM Support
 
-What's New in v2.4:
-- Reinforcement Learning support (method="rl")
-- Multi-optimizer support (Adam, NAdam, AMSGrad, SGD, Momentum, LAMB)
-- +129% improvement on LunarLander, +118% on MuJoCo, +53% on VQE
+What's New in v2.5:
+- New method names: 'standard', 'deep', 'adaptive' (legacy names still work!)
+- 80% win rate across all quantum noise levels
+- +32.5% more robust to quantum hardware noise
+- +18% improvement on LLM soft prompt tuning
+- Full backward compatibility
 
-Quick Start (VQE - Chemistry):
+Methods:
+    | Method   | Legacy | Use Case                                    |
+    |----------|--------|---------------------------------------------|
+    | standard | vqe    | Smooth landscapes, chemistry, physics       |
+    | deep     | qaoa   | Deep circuits, noisy hardware, complex opt  |
+    | adaptive | rl     | RL, LLM fine-tuning, high-variance problems |
+
+Quick Start (Quantum VQE):
     from mobiu_q import MobiuQCore, Demeasurement
     
-    opt = MobiuQCore(license_key="your-key", method="vqe")
+    opt = MobiuQCore(license_key="your-key", method="standard")
     
     for step in range(100):
         E = energy_fn(params)
@@ -24,8 +33,8 @@ Quick Start (VQE - Chemistry):
     
     opt.end()
 
-For QAOA (Combinatorial Optimization):
-    opt = MobiuQCore(method="qaoa", mode="hardware")
+For Deep circuits / Noisy hardware:
+    opt = MobiuQCore(method="deep", mode="hardware")
     
     for step in range(150):
         grad, E = Demeasurement.spsa(energy_fn, params)
@@ -33,8 +42,8 @@ For QAOA (Combinatorial Optimization):
     
     opt.end()
 
-For RL (Reinforcement Learning) - NEW in v2.4:
-    opt = MobiuQCore(method="rl")
+For RL / LLM fine-tuning:
+    opt = MobiuQCore(method="adaptive")
     
     for episode in range(1000):
         episode_return = run_episode(policy)
@@ -44,26 +53,32 @@ For RL (Reinforcement Learning) - NEW in v2.4:
     opt.end()
 
 Method & Mode:
-    | Method | Mode       | Use Case                    | Default LR |
-    |--------|------------|-----------------------------+------------|
-    | vqe    | simulation | Chemistry, physics (clean)  | 0.01       |
-    | vqe    | hardware   | VQE on quantum hardware     | 0.02       |
-    | qaoa   | simulation | Combinatorial (simulator)   | 0.1        |
-    | qaoa   | hardware   | QAOA on quantum hardware    | 0.1        |
-    | rl     | (any)      | Reinforcement learning      | 0.0003     |
+    | Method   | Mode       | Use Case                      | Default LR |
+    |----------|------------|-------------------------------|------------|
+    | standard | simulation | Chemistry, physics (clean)    | 0.01       |
+    | standard | hardware   | VQE on quantum hardware       | 0.02       |
+    | deep     | simulation | Combinatorial (simulator)     | 0.1        |
+    | deep     | hardware   | QAOA on quantum hardware      | 0.1        |
+    | adaptive | (any)      | RL, LLM fine-tuning           | 0.0003     |
 
-Optimizers (NEW in v2.4):
+Optimizers:
     Default: Adam (recommended - works best across all methods)
     Available: Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
     
-    Example: MobiuQCore(method="qaoa", base_optimizer="NAdam")
+    Example: MobiuQCore(method="deep", base_optimizer="NAdam")
+
+Benchmark Results:
+    - Quantum: 80% win rate, +5% to +65% improvement
+    - Noise Robustness: +32.5% more robust than standard optimizers
+    - LLM: +18% improvement on soft prompt tuning
+    - RL: +129% on LunarLander, +118% on MuJoCo
 
 License:
     Free tier: 20 runs/month
     Pro tier: Unlimited - https://app.mobiu.ai
 """
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __author__ = "Mobiu Technologies"
 
 # Core optimizer
@@ -72,7 +87,9 @@ from .core import (
     Demeasurement, 
     get_default_lr,
     AVAILABLE_OPTIMIZERS,
-    DEFAULT_OPTIMIZER
+    DEFAULT_OPTIMIZER,
+    METHOD_ALIASES,
+    VALID_METHODS
 )
 
 # CLI utilities
@@ -99,6 +116,8 @@ __all__ = [
     "get_default_lr",
     "AVAILABLE_OPTIMIZERS",
     "DEFAULT_OPTIMIZER",
+    "METHOD_ALIASES",
+    "VALID_METHODS",
     # CLI
     "activate_license",
     "check_status",

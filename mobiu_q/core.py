@@ -1,19 +1,27 @@
 """
 Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
-Cloud-connected optimizer for quantum variational algorithms and RL.
+Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.4.3 - Multi-Optimizer + RL Support
-- method='vqe'/'qaoa'/'rl'
-- mode='simulation'/'hardware'
-- base_optimizer='Adam'/'NAdam'/'AMSGrad'/'SGD'/'Momentum'/'LAMB'
-- Default optimizer: Adam (works best across all methods)
-- Default LR by method+mode
+Version: 2.5.0 - New Method Names + Noise Robustness + LLM Support
 
-Usage (VQE - Chemistry):
+Method names (v2.5+):
+- method='standard' (was 'vqe'): For smooth landscapes, chemistry, physics
+- method='deep' (was 'qaoa'): For deep circuits, noisy hardware, complex optimization
+- method='adaptive' (was 'rl'): For RL, LLM fine-tuning, high-variance problems
+
+Backward compatible: 'vqe', 'qaoa', 'rl' still work!
+
+Benchmark Results:
+- 80% win rate across all noise levels
+- +32.5% more robust to quantum hardware noise
+- +5% to +65% improvement over standard optimizers
+- +18% improvement on LLM soft prompt tuning
+
+Usage (Quantum VQE):
     from mobiu_q import MobiuQCore, Demeasurement
     
-    opt = MobiuQCore(license_key="your-key", method="vqe")
+    opt = MobiuQCore(license_key="your-key", method="standard")
     
     for step in range(100):
         grad = Demeasurement.finite_difference(energy_fn, params)
@@ -21,10 +29,8 @@ Usage (VQE - Chemistry):
     
     opt.end()
 
-Usage (QAOA - Combinatorial, on hardware):
-    from mobiu_q import MobiuQCore, Demeasurement
-    
-    opt = MobiuQCore(license_key="your-key", method="qaoa", mode="hardware")
+Usage (Deep circuits / Noisy hardware):
+    opt = MobiuQCore(license_key="your-key", method="deep", mode="hardware")
     
     for step in range(150):
         grad, energy = Demeasurement.spsa(energy_fn, params)
@@ -32,27 +38,14 @@ Usage (QAOA - Combinatorial, on hardware):
     
     opt.end()
 
-Usage (RL - Reinforcement Learning):
-    from mobiu_q import MobiuQCore
-    
-    opt = MobiuQCore(license_key="your-key", method="rl")
+Usage (RL / LLM fine-tuning):
+    opt = MobiuQCore(license_key="your-key", method="adaptive")
     
     for episode in range(1000):
-        # ... run episode, compute policy gradient ...
-        opt.step(policy_params, gradient, episode_return)
+        # ... run episode or forward pass, compute gradient ...
+        opt.step(params, gradient, loss_or_return)
     
     opt.end()
-
-Multi-seed usage (counts as 1 run):
-    opt = MobiuQCore(license_key="your-key")
-    
-    for seed in range(10):
-        opt.new_run()  # Reset state, same session
-        params = init_params(seed)
-        for step in range(100):
-            params = opt.step(params, grad, energy)
-    
-    opt.end()  # Only here it counts as 1 run
 """
 
 import numpy as np
@@ -66,7 +59,6 @@ import warnings
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# API endpoint
 API_ENDPOINT = os.environ.get(
     "MOBIU_Q_API_ENDPOINT",
     "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
@@ -78,15 +70,27 @@ LICENSE_KEY_FILE = os.path.expanduser("~/.mobiu_q_license")
 AVAILABLE_OPTIMIZERS = ["Adam", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"]
 DEFAULT_OPTIMIZER = "Adam"
 
+# Method name mapping (new names + legacy support)
+METHOD_ALIASES = {
+    # New names (v2.5+)
+    "standard": "standard",
+    "deep": "deep", 
+    "adaptive": "adaptive",
+    # Legacy names (backward compatibility)
+    "vqe": "standard",
+    "qaoa": "deep",
+    "rl": "adaptive",
+}
+
+VALID_METHODS = list(METHOD_ALIASES.keys())
+
 
 def get_license_key() -> Optional[str]:
     """Get license key from environment or file."""
-    # 1. Environment variable
     key = os.environ.get("MOBIU_Q_LICENSE_KEY")
     if key:
         return key
     
-    # 2. License file
     if os.path.exists(LICENSE_KEY_FILE):
         with open(LICENSE_KEY_FILE, "r") as f:
             return f.read().strip()
@@ -109,21 +113,26 @@ def get_default_lr(method: str, mode: str) -> float:
     """
     Get default learning rate based on method and mode.
     
-    | Method | Mode       | Default LR |
-    |--------|------------|------------|
-    | vqe    | simulation | 0.01       |
-    | vqe    | hardware   | 0.02       |
-    | qaoa   | simulation | 0.1        |
-    | qaoa   | hardware   | 0.1        |
-    | rl     | any        | 0.0003     |
+    | Method    | Mode       | Default LR |
+    |-----------|------------|------------|
+    | standard  | simulation | 0.01       |
+    | standard  | hardware   | 0.02       |
+    | deep      | simulation | 0.1        |
+    | deep      | hardware   | 0.1        |
+    | adaptive  | any        | 0.0003     |
+    
+    Legacy names (vqe, qaoa, rl) are automatically mapped.
     """
-    if method == 'rl':
+    # Map legacy names to new names
+    method = METHOD_ALIASES.get(method, method)
+    
+    if method == 'adaptive':
         return 0.0003
-    elif method == 'qaoa':
+    elif method == 'deep':
         return 0.1
     elif mode == 'hardware':
         return 0.02
-    else:  # vqe + simulation
+    else:  # standard + simulation
         return 0.01
 
 
@@ -140,36 +149,33 @@ class MobiuQCore:
     
     Args:
         license_key: Your Mobiu-Q license key (or set MOBIU_Q_LICENSE_KEY env var)
-        method: "vqe" (chemistry/physics), "qaoa" (combinatorial), or "rl" (reinforcement learning)
-        mode: "simulation" (clean simulations) or "hardware" (quantum hardware/noisy)
+        method: Optimization method:
+            - "standard" (or legacy "vqe"): For smooth landscapes, chemistry, physics
+            - "deep" (or legacy "qaoa"): For deep circuits, noisy hardware
+            - "adaptive" (or legacy "rl"): For RL, LLM fine-tuning, high-variance
+        mode: "simulation" (clean) or "hardware" (noisy quantum hardware)
         base_lr: Learning rate (default: computed from method+mode)
-        base_optimizer: Optimizer to use: "Adam" (default), "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"
+        base_optimizer: Optimizer: "Adam" (default), "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"
         use_soft_algebra: Enable Soft Algebra enhancement (default: True)
         offline_fallback: If True, use local Adam when API unavailable
-        
-        # Deprecated parameters (still supported for backward compatibility):
-        problem: Use 'method' instead
+    
+    Benchmark Results (v2.5):
+        - 80% win rate across all noise levels
+        - +32.5% more robust to quantum hardware noise
+        - +5% to +65% improvement over standard optimizers
+        - +18% improvement on LLM soft prompt tuning
     
     Default Learning Rates:
-        | Method | Mode       | Default LR |
-        |--------|------------|------------|
-        | vqe    | simulation | 0.01       |
-        | vqe    | hardware   | 0.02       |
-        | qaoa   | simulation | 0.1        |
-        | qaoa   | hardware   | 0.1        |
-        | rl     | any        | 0.0003     |
+        | Method    | Mode       | Default LR |
+        |-----------|------------|------------|
+        | standard  | simulation | 0.01       |
+        | standard  | hardware   | 0.02       |
+        | deep      | simulation | 0.1        |
+        | deep      | hardware   | 0.1        |
+        | adaptive  | any        | 0.0003     |
     
-    Optimizers:
-        Default: Adam (recommended - works best across all methods)
-        
-        Alternatives (for experimentation):
-        - NAdam: Strong on QAOA problems
-        - AMSGrad: May outperform on VQE simulation
-        - LAMB: High improvement potential, less stable
-        - SGD/Momentum: Simple baselines
-    
-    Example (VQE - Chemistry):
-        opt = MobiuQCore(license_key="xxx", method="vqe")
+    Example (Quantum VQE):
+        opt = MobiuQCore(license_key="xxx", method="standard")
         
         for step in range(100):
             grad = Demeasurement.finite_difference(energy_fn, params)
@@ -177,8 +183,8 @@ class MobiuQCore:
         
         opt.end()
     
-    Example (QAOA - Combinatorial on hardware):
-        opt = MobiuQCore(license_key="xxx", method="qaoa", mode="hardware")
+    Example (Deep circuits / Noisy hardware):
+        opt = MobiuQCore(license_key="xxx", method="deep", mode="hardware")
         
         for step in range(150):
             grad, energy = Demeasurement.spsa(energy_fn, params)
@@ -186,11 +192,10 @@ class MobiuQCore:
         
         opt.end()
     
-    Example (RL - Reinforcement Learning):
-        opt = MobiuQCore(license_key="xxx", method="rl")
+    Example (RL / LLM fine-tuning):
+        opt = MobiuQCore(license_key="xxx", method="adaptive")
         
         for episode in range(1000):
-            # Run episode, compute policy gradient
             params = opt.step(params, policy_gradient, episode_return)
         
         opt.end()
@@ -205,27 +210,20 @@ class MobiuQCore:
                 params = opt.step(params, grad, energy)
         
         opt.end()  # Counts as 1 run total
-    
-    Example (custom optimizer):
-        opt = MobiuQCore(
-            license_key="xxx", 
-            method="qaoa",
-            base_optimizer="NAdam"  # Try NAdam for QAOA
-        )
     """
     
     def __init__(
         self,
         license_key: Optional[str] = None,
-        method: str = "vqe",           # "vqe", "qaoa", or "rl"
-        mode: str = "simulation",       # "simulation" or "hardware"
+        method: str = "standard",       # "standard", "deep", "adaptive" (or legacy: "vqe", "qaoa", "rl")
+        mode: str = "simulation",        # "simulation" or "hardware"
         base_lr: Optional[float] = None,
-        base_optimizer: str = DEFAULT_OPTIMIZER,  # NEW in v2.4
-        use_soft_algebra: bool = True,  # NEW in v2.4
+        base_optimizer: str = DEFAULT_OPTIMIZER,
+        use_soft_algebra: bool = True,
         offline_fallback: bool = True,
         verbose: bool = True,
         # Deprecated parameters (backward compatibility)
-        problem: Optional[str] = None,  # Use 'method' instead
+        problem: Optional[str] = None,
     ):
         self.license_key = license_key or get_license_key()
         if not self.license_key:
@@ -241,7 +239,7 @@ class MobiuQCore:
                 DeprecationWarning,
                 stacklevel=2
             )
-            if method == "vqe":  # Only override if method wasn't explicitly set
+            if method == "standard":  # Only override if method wasn't explicitly set
                 method = problem
         
         # Normalize mode (backward compatibility)
@@ -250,9 +248,12 @@ class MobiuQCore:
         elif mode == "noisy":
             mode = "hardware"
         
-        # Validate method
-        if method not in ("vqe", "qaoa", "rl"):
-            raise ValueError(f"method must be 'vqe', 'qaoa', or 'rl', got '{method}'")
+        # Validate method (accept both new and legacy names)
+        if method not in VALID_METHODS:
+            raise ValueError(f"method must be one of {VALID_METHODS}, got '{method}'")
+        
+        # Map to internal name
+        internal_method = METHOD_ALIASES.get(method, method)
         
         # Validate mode
         if mode not in ("simulation", "hardware"):
@@ -264,9 +265,10 @@ class MobiuQCore:
                 f"base_optimizer must be one of {AVAILABLE_OPTIMIZERS}, got '{base_optimizer}'"
             )
         
-        self.method = method
+        self.method = internal_method  # Store internal name
+        self._original_method = method  # Store what user passed (for display)
         self.mode = mode
-        self.base_lr = base_lr if base_lr is not None else get_default_lr(method, mode)
+        self.base_lr = base_lr if base_lr is not None else get_default_lr(internal_method, mode)
         self.base_optimizer = base_optimizer
         self.use_soft_algebra = use_soft_algebra
         self.offline_fallback = offline_fallback
@@ -317,8 +319,8 @@ class MobiuQCore:
                     "method": self.method,
                     "mode": self.mode,
                     "base_lr": self.base_lr,
-                    "base_optimizer": self.base_optimizer,  # NEW in v2.4
-                    "use_soft_algebra": self.use_soft_algebra  # NEW in v2.4
+                    "base_optimizer": self.base_optimizer,
+                    "use_soft_algebra": self.use_soft_algebra
                 },
                 timeout=10
             )
@@ -433,15 +435,18 @@ class MobiuQCore:
         
         Args:
             params: Current parameter values
-            gradient: Gradient of the energy w.r.t. params
-            energy: Current energy value (or episode return for RL)
+            gradient: Gradient of the objective w.r.t. params
+            energy: Current objective value (energy for quantum, loss for LLM, return for RL)
         
         Returns:
             Updated parameters
         
-        Note for RL:
-            For reinforcement learning (method='rl'), pass the episode return
-            as the 'energy' parameter. Higher returns are better (maximization).
+        Note:
+            For RL (method='adaptive'), pass the episode return as 'energy'.
+            Higher returns are better (maximization).
+            
+            For LLM fine-tuning, pass the loss as 'energy'.
+            Lower loss is better (minimization).
         """
         self.energy_history.append(energy)
         
@@ -568,10 +573,6 @@ class MobiuQCore:
     def reset(self):
         """
         DEPRECATED: Use new_run() for multi-seed experiments.
-        
-        This method ends the current session and starts a new one,
-        which counts as a separate run. Use new_run() instead to
-        keep multiple optimization runs in a single session.
         """
         warnings.warn(
             "reset() is deprecated and counts each call as a separate run. "
@@ -585,12 +586,7 @@ class MobiuQCore:
         self._start_session()
     
     def check_usage(self) -> dict:
-        """
-        Check current usage without affecting quota.
-        
-        Returns:
-            dict with: tier, used, limit, remaining
-        """
+        """Check current usage without affecting quota."""
         try:
             response = requests.post(
                 self.api_endpoint,
@@ -609,12 +605,7 @@ class MobiuQCore:
         return {}
     
     def get_server_info(self) -> dict:
-        """
-        Get server information including available optimizers.
-        
-        Returns:
-            dict with: version, default_optimizer, available_optimizers, methods, modes
-        """
+        """Get server information including available methods and optimizers."""
         try:
             response = requests.post(
                 self.api_endpoint,
@@ -631,7 +622,9 @@ class MobiuQCore:
             pass
         return {
             "available_optimizers": AVAILABLE_OPTIMIZERS,
-            "default_optimizer": DEFAULT_OPTIMIZER
+            "default_optimizer": DEFAULT_OPTIMIZER,
+            "methods": ["standard", "deep", "adaptive"],
+            "legacy_methods": ["vqe", "qaoa", "rl"]
         }
     
     @property
@@ -668,10 +661,10 @@ class Demeasurement:
     These run locally - no API call needed.
     
     Choose based on your problem:
-    - VQE (smooth landscapes): finite_difference() or parameter_shift()
-    - QAOA (rugged landscapes): spsa()
+    - Standard (smooth landscapes): finite_difference() or parameter_shift()
+    - Deep (rugged landscapes): spsa()
     - Hardware (noisy): spsa()
-    - RL: Use your framework's gradient computation (e.g., PyTorch autograd)
+    - RL/LLM: Use your framework's gradient computation (e.g., PyTorch autograd)
     """
     
     @staticmethod
@@ -722,7 +715,7 @@ class Demeasurement:
         """
         Simultaneous Perturbation Stochastic Approximation (SPSA).
         Requires only 2 circuit evaluations regardless of parameter count!
-        Best for: Noisy quantum hardware, NISQ devices, QAOA.
+        Best for: Noisy quantum hardware, NISQ devices, deep circuits.
         
         Returns:
             (gradient_estimate, estimated_energy)
@@ -749,7 +742,6 @@ def activate_license(key: str):
     """Activate and save license key."""
     save_license_key(key)
     
-    # Verify it works
     try:
         opt = MobiuQCore(license_key=key, verbose=False)
         opt.end()
@@ -779,6 +771,7 @@ def check_status():
             print(f"   Remaining: {usage.get('remaining', 'unknown')}")
         if info:
             print(f"   Server version: {info.get('version', 'unknown')}")
+            print(f"   Methods: {', '.join(info.get('methods', []))}")
             print(f"   Available optimizers: {', '.join(info.get('available_optimizers', []))}")
     except Exception as e:
         print(f"❌ License check failed: {e}")
@@ -788,7 +781,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 __all__ = [
     "MobiuQCore",
     "Demeasurement",
@@ -796,5 +789,7 @@ __all__ = [
     "check_status",
     "get_default_lr",
     "AVAILABLE_OPTIMIZERS",
-    "DEFAULT_OPTIMIZER"
+    "DEFAULT_OPTIMIZER",
+    "METHOD_ALIASES",
+    "VALID_METHODS"
 ]

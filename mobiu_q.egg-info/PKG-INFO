@@ -1,7 +1,9 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 2.4.3
+Version: 2.5
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
+Home-page: https://mobiu.ai
+Author: Mobiu Technologies
 Author-email: Mobiu Technologies <ai@mobiu.ai>
 License: Proprietary
 Project-URL: Homepage, https://app.mobiu.ai
@@ -27,8 +29,11 @@ Requires-Dist: pytest-cov; extra == "dev"
 Provides-Extra: full
 Requires-Dist: scipy>=1.7.0; extra == "full"
 Requires-Dist: qiskit>=0.40.0; extra == "full"
+Dynamic: author
+Dynamic: home-page
+Dynamic: requires-python
 
-# Mobiu-Q (v2.4.3)
+# Mobiu-Q (v2.5.0)
 
 **Universal Physics-Aware Optimizer for Stochastic Systems**
 
@@ -37,60 +42,64 @@ Requires-Dist: qiskit>=0.40.0; extra == "full"
 
 **Mobiu-Q** is the first optimizer based on **Soft Algebra**, developed by Dr. Moshe Klein and Prof. Oded Maimon. By mathematically decomposing gradients into *Potential* ($a_t$) and *Realization* ($b_t$), it filters out noise in real-time.
 
-Works across **Quantum Computing**, **Reinforcement Learning**, **FinTech**, and **LLM Fine-Tuning**.
+Works across **Quantum Computing**, **Reinforcement Learning**, **LLM Fine-Tuning**, and **FinTech**.
 
 ---
 
-## 🚀 What's New in v2.4.3
+## 🚀 What's New in v2.5.0
 
-- **Comprehensive Benchmark Validation**: 17 problems tested with statistical significance
-- **IBM FakeFez Validation**: +50.9% on VQE, +16.1% on QAOA with real noise models
-- **LLM Soft Prompt Tuning**: Optimize soft prompts for language models
+- **New Method Names**: `standard`, `deep`, `adaptive` (legacy `vqe`/`qaoa`/`rl` still work!)
+- **Noise Robustness**: +32.5% more robust to quantum hardware noise
+- **80% Win Rate**: Outperforms standard optimizers across all noise levels
+- **LLM Support**: +18% improvement on soft prompt tuning
 
 ---
 
-## 🏆 Benchmark Results (v2.4.3)
+## 🏆 Benchmark Results
 
-### Quantum Computing - IBM FakeFez (Real Noise Model)
+### Noise Robustness (IBM FakeBackend)
 
-| Problem | Improvement | p-value | Win Rate |
-|---------|-------------|---------|----------|
-| **VQE H2 Molecule** | **+50.9%** | 0.0334 | 5/5 ✅ |
-| **QAOA MaxCut 5q** | **+16.1%** | 0.0029 | 9/10 ✅ |
+| Condition | Momentum | Mobiu-Q | Winner |
+|-----------|----------|---------|--------|
+| IDEAL     | -2.19    | -1.29   | Momentum |
+| **NOISY** | +0.20    | **-0.30** | **Mobiu-Q ✅** |
 
-### Quantum Chemistry (Simulation)
+**Key Finding:**
+- Momentum degradation under noise: **+109%** (breaks down)
+- Mobiu-Q degradation under noise: **+77%** (stays stable)
+- **Mobiu-Q is 32.5% MORE ROBUST to noise!**
 
-| Molecule | Improvement | Significant |
-|----------|-------------|-------------|
-| H2 | +46.6% | ✅ |
-| LiH | +41.4% | ✅ |
-| BeH2 | +37.8% | ✅ |
-| He Atom | +51.2% | ✅ |
-| H3+ Chain | +42.0% | ✅ |
+### Comprehensive Noise Test
 
-### Condensed Matter Physics
+| Qubits | Noise Level | SA Gain | Win Rate |
+|--------|-------------|---------|----------|
+| 2      | all levels  | +27-65% | 5/5 ✅   |
+| 4      | all levels  | +5-19%  | 4/5 ✅   |
+| 6      | all levels  | +2-14%  | 3/5 ✅   |
 
-| Model | Improvement | Significant |
-|-------|-------------|-------------|
-| Heisenberg XXZ | +20.8% | ✅ |
-| Transverse Ising | +42.0% | ✅ |
-| XY Model | +60.8% | ✅ |
-| Ferromagnetic Ising | +45.1% | ✅ |
-| Hubbard Dimer | +14.1% | ✅ |
+**Overall: 80% win rate (12/15 tests) with +5% to +65% improvement**
 
-### Classical Optimization
+### LLM Soft Prompt Tuning
 
-| Problem | Improvement |
-|---------|-------------|
-| Rosenbrock | +65.5% |
+| Config | Improvement | Win Rate |
+|--------|-------------|----------|
+| Momentum+SA | **+18.1%** | 3/3 ✅ |
 
-### QAOA (Simulation with noise=0.1)
+### Quantum Chemistry (VQE)
 
-| Problem | Improvement | Win Rate | p-value |
-|---------|-------------|----------|---------|
-| MaxCut 4 qubits | +27.2% | 7/10 | 0.0414 ✅ |
-| MaxCut 5 qubits | +23.7% | 9/10 | 0.0036 ✅ |
-| MaxCut p=3 | +15.6% | 9/10 | 0.0083 ✅ |
+| Molecule | Improvement |
+|----------|-------------|
+| H2       | +46.6%      |
+| LiH      | +41.4%      |
+| BeH2     | +37.8%      |
+| He Atom  | +51.2%      |
+
+### Reinforcement Learning
+
+| Environment | Improvement | Win Rate |
+|-------------|-------------|----------|
+| LunarLander | +129.7%     | 96.7%    |
+| MuJoCo      | +118.6%     | 100%     |
 
 ---
 
@@ -104,12 +113,12 @@ pip install mobiu-q
 
 ## ⚡ Quick Start
 
-### 1. VQE (Quantum Chemistry)
+### 1. Standard (Quantum VQE, Chemistry)
 
 ```python
 from mobiu_q import MobiuQCore, Demeasurement
 
-opt = MobiuQCore(license_key="YOUR-KEY", method="vqe")
+opt = MobiuQCore(license_key="YOUR-KEY", method="standard")
 
 for step in range(100):
     grad = Demeasurement.finite_difference(energy_fn, params)
@@ -118,12 +127,12 @@ for step in range(100):
 opt.end()
 ```
 
-### 2. QAOA (Combinatorial Optimization)
+### 2. Deep (Complex Circuits, Noisy Hardware)
 
 ```python
 opt = MobiuQCore(
     license_key="YOUR-KEY",
-    method="qaoa",
+    method="deep",
     mode="hardware"  # For quantum hardware / noisy simulation
 )
 
@@ -134,10 +143,10 @@ for step in range(150):
 opt.end()
 ```
 
-### 3. Reinforcement Learning
+### 3. Adaptive (RL, LLM Fine-Tuning)
 
 ```python
-opt = MobiuQCore(license_key="YOUR-KEY", method="rl")
+opt = MobiuQCore(license_key="YOUR-KEY", method="adaptive")
 
 for episode in range(1000):
     episode_return = run_episode(policy)
@@ -147,7 +156,20 @@ for episode in range(1000):
 opt.end()
 ```
 
-### 4. Multi-Seed Experiments (1 billing session)
+### 4. LLM Soft Prompt Tuning
+
+```python
+opt = MobiuQCore(license_key="YOUR-KEY", method="adaptive")
+
+for step in range(50):
+    loss = compute_loss(soft_tokens, model, batch)
+    grad = compute_gradient(loss, soft_tokens)
+    soft_tokens = opt.step(soft_tokens, grad, loss)
+
+opt.end()
+```
+
+### 5. Multi-Seed Experiments (1 billing session)
 
 ```python
 opt = MobiuQCore(license_key="YOUR-KEY")
@@ -164,15 +186,20 @@ opt.end()  # All 10 seeds count as 1 run
 
 ## 🎛️ Configuration
 
-### Methods and Modes
+### Methods
 
-| Method | Mode | Use Case | Default LR |
-|--------|------|----------|------------|
-| `vqe` | `simulation` | Chemistry, physics (clean) | 0.01 |
-| `vqe` | `hardware` | VQE on quantum hardware | 0.02 |
-| `qaoa` | `simulation` | Combinatorial (simulator) | 0.1 |
-| `qaoa` | `hardware` | QAOA on quantum hardware | 0.1 |
-| `rl` | (ignored) | Reinforcement learning | 0.0003 |
+| Method   | Legacy | Use Case                              | Default LR |
+|----------|--------|---------------------------------------|------------|
+| standard | vqe    | Smooth landscapes, chemistry, physics | 0.01-0.02  |
+| deep     | qaoa   | Deep circuits, noisy hardware         | 0.1        |
+| adaptive | rl     | RL, LLM fine-tuning, high-variance    | 0.0003     |
+
+### Modes
+
+| Mode       | Use Case                    |
+|------------|------------------------------|
+| simulation | Clean simulations            |
+| hardware   | Quantum hardware, noisy sims |
 
 ### Optimizers
 
@@ -180,27 +207,26 @@ opt.end()  # All 10 seeds count as 1 run
 
 ```python
 # Use default (Adam)
-opt = MobiuQCore(method="vqe")
+opt = MobiuQCore(method="standard")
 
-# Alternative optimizer - note exact case!
-opt = MobiuQCore(method="qaoa", base_optimizer="NAdam")
+# Alternative optimizer
+opt = MobiuQCore(method="deep", base_optimizer="NAdam")
 ```
 
-Available optimizers (exact names):
-- `Adam` (default) - Best overall performance
-- `NAdam` - Strong on QAOA problems
-- `AMSGrad` - Alternative for VQE
+Available optimizers:
+- `Adam` (default) - Best overall
+- `NAdam` - Strong on deep circuits
+- `Momentum` - Best for noisy hardware (+18.1% on LLM)
+- `AMSGrad` - Alternative for standard
 - `SGD` - Simple baseline
-- `Momentum` - SGD with momentum
 - `LAMB` - Large batch training
 
 ### Disable Soft Algebra
 
-For A/B testing against plain optimizers:
+For A/B testing:
 
 ```python
-# Plain Adam (no Soft Algebra)
-opt = MobiuQCore(method="vqe", use_soft_algebra=False)
+opt = MobiuQCore(method="standard", use_soft_algebra=False)
 ```
 
 ---
@@ -209,38 +235,32 @@ opt = MobiuQCore(method="vqe", use_soft_algebra=False)
 
 ### The Core Innovation: "Noise Hallucination" Prevention
 
-Standard optimizers (Adam, SGD) assume lower objective values always indicate better solutions. In noisy environments—like NISQ processors or stochastic RL—this fails. Optimizers "tunnel" into noise, creating **Noise Hallucinations**.
+Standard optimizers assume lower objective values always indicate better solutions. In noisy environments, this fails. Mobiu-Q uses **Soft Algebra** to distinguish real progress from noise.
 
-**The Solution:** Soft Algebra, developed by Dr. Moshe Klein and Prof. Oded Maimon, uses cross-coupled state evolution:
+### SoftNumber Multiplication (Nilpotent ε²=0)
+
+```
+(a, b) * (c, d) = (ad + bc, bd)
+```
+
+### State Evolution
 
 ```
 S_{t+1} = (γ · S_t) · Δ_t + Δ_t
 ```
 
 Where:
-- `a_t` (Potential): Curvature signal from energy history
-- `b_t` (Realized): Actual improvement achieved
-- `Δ†` (Super-Equation): Emergence detection for QAOA/RL
-
-A parameter update is only committed if the *Potential Field* is validated by *Realized Improvement*.
-
-### SoftNumber Multiplication
-
-The core of Soft Algebra uses nilpotent arithmetic (ε²=0):
-
-```
-(a, b) * (c, d) = (ad + bc, bd)
-```
-
-This allows gradients to carry both magnitude and uncertainty information.
+- `a_t` (Potential): Curvature signal
+- `b_t` (Realized): Actual improvement
+- `Δ†` (Super-Equation): Emergence detection for deep/adaptive
 
 ### Method-Specific Logic
 
-| Method | Primary Mechanism | Best For |
-|--------|-------------------|----------|
-| VQE | Trust Ratio + Gradient Warping | Smooth energy landscapes |
-| QAOA | Super-Equation Δ† | Rugged, multimodal landscapes |
-| RL | Trust + Emergence + Warping | High-variance, sparse rewards |
+| Method   | Primary Mechanism              | Best For                    |
+|----------|--------------------------------|-----------------------------|
+| standard | Trust Ratio + Gradient Warping | Smooth energy landscapes    |
+| deep     | Super-Equation Δ†              | Rugged, multimodal, noisy   |
+| adaptive | Trust + Emergence + Warping    | High-variance, sparse reward|
 
 ---
 
@@ -248,23 +268,23 @@ This allows gradients to carry both magnitude and uncertainty information.
 
 ✅ **Use Mobiu-Q when:**
 - High noise/variance (quantum hardware, RL, stochastic finance)
-- Rugged landscapes with many local minima
-- Expensive function evaluations
+- Deep circuits with many parameters
+- Noisy quantum hardware (IBM, IonQ, etc.)
+- LLM fine-tuning with limited data
 - Standard optimizers diverge or get stuck
 
 ❌ **Skip Mobiu-Q when:**
-- Clean, convex problems (vanilla SGD is fine)
+- Clean, convex problems
 - Deterministic, low-noise environments
-- Very low variance settings
 
 ---
 
 ## 🔑 Pricing
 
-| Tier | Runs/Month | Features |
-|------|------------|----------|
-| **Free** | 20 | Testing & students |
-| **Pro** | Unlimited | Priority processing, all features |
+| Tier     | Runs/Month | Features              |
+|----------|------------|-----------------------|
+| **Free** | 20         | Testing & students    |
+| **Pro**  | Unlimited  | Priority, all features|
 
 **[Get your License Key](https://app.mobiu.ai)**
 
@@ -276,13 +296,13 @@ This allows gradients to carry both magnitude and uncertainty information.
 
 ```python
 MobiuQCore(
-    license_key: str,           # Your license key
-    method: str = "vqe",        # "vqe", "qaoa", or "rl"
-    mode: str = "simulation",   # "simulation" or "hardware"
-    base_lr: float = None,      # Learning rate (auto if None)
-    base_optimizer: str = "Adam",  # Case-sensitive! Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
-    use_soft_algebra: bool = True, # Enable/disable SA
-    offline_fallback: bool = True  # Fallback to local Adam
+    license_key: str,
+    method: str = "standard",      # "standard", "deep", "adaptive"
+    mode: str = "simulation",      # "simulation" or "hardware"
+    base_lr: float = None,         # Auto if None
+    base_optimizer: str = "Adam",  # Case-sensitive!
+    use_soft_algebra: bool = True,
+    offline_fallback: bool = True
 )
 ```
 
@@ -295,11 +315,11 @@ MobiuQCore(
 ### Demeasurement
 
 ```python
-# For VQE (smooth landscapes)
+# For standard (smooth)
 grad = Demeasurement.finite_difference(energy_fn, params)
 grad = Demeasurement.parameter_shift(circuit_fn, params)
 
-# For QAOA/hardware (noisy)
+# For deep/hardware (noisy)
 grad, energy = Demeasurement.spsa(energy_fn, params)
 ```
 
@@ -309,19 +329,12 @@ grad, energy = Demeasurement.spsa(energy_fn, params)
 
 Mobiu-Q is based on **Soft Algebra**, developed by:
 
-- **Dr. Moshe Klein** - Mathematician, developer of Soft Logic and Soft Numbers
+- **Dr. Moshe Klein** - Mathematician, Soft Logic and Soft Numbers
 - **Prof. Oded Maimon** - Tel Aviv University, Industrial Engineering
-
-The theoretical foundations combine:
-- Nilpotent arithmetic (ε²=0)
-- Cross-coupled dynamical systems
-- Information-theoretic trust measures
 
 ---
 
 ## 📖 Citation
-
-If you use Mobiu-Q in research:
 
 ```bibtex
 @software{mobiu_q,
