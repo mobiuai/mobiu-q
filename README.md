@@ -1,4 +1,4 @@
-# Mobiu-Q v2.5.4
+# Mobiu-Q v2.5.5
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![Win Rate](https://img.shields.io/badge/Win%20Rate-80%25-brightgreen)](https://mobiu.ai)
