@@ -1,4 +1,4 @@
-# Mobiu-Q V2.5.4
+# Mobiu-Q v2.5.4
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![Win Rate](https://img.shields.io/badge/Win%20Rate-80%25-brightgreen)](https://mobiu.ai)
@@ -174,6 +174,8 @@ opt.end()
 ---
 
 ## 🔧 Configuration
+
+📖 **For complete benchmark results and recommended configurations per domain, see [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md)**
 
 ### Methods
 
