@@ -2,7 +2,7 @@
 ## Verified Benchmark Results & Recommended Settings
 
 **Last Updated:** December 2024  
-**Version:** 2.5.5
+**Version:** 2.5.6
 
 ---
 
@@ -10,15 +10,14 @@
 
 | Domain | Best Improvement | Recommended Config |
 |--------|------------------|-------------------|
-| **RL Games** | +129.7% | Adam, method=adaptive |
-| **RL Robotics** | +118.6% | Adam, method=adaptive |
-| **Materials Science** | +98.3% | Default |
-| **LoRA Fine-tuning** | +97.6% | Momentum |
-| **Drug Discovery** | +80.5% | Task-specific |
-| **Quantum VQE** | +53.1% | Adam, mode=hardware |
-| **QAOA MaxCut** | +30.5% | SGD, method=deep |
-| **LLM Training** | +21.2% PPL | Default |
-| **LLM Soft Prompt** | +18.1% | Momentum |
+| **RL Games** | +129.7% | Adam, adaptive, lr=0.0003 |
+| **RL Robotics** | +118.6% | Adam, adaptive, lr=0.0003 |
+| **Classical Opt** | +75.8% | Adam, standard, lr=0.01 |
+| **Condensed Matter** | +61.0% | Adam, standard, lr=0.01 |
+| **Finance** | +52.3% | Adam, standard, lr=0.01 |
+| **Quantum VQE** | +52.4% | Adam, standard, mode=hardware |
+| **QAOA** | +45.1% | SGD, deep, lr=0.1 |
+| **Drug Discovery** | +12.2% | AMSGrad, standard, lr=0.01 |
 
 ---
 
@@ -26,8 +25,6 @@
 
 ### Configuration
 ```python
-from mobiu_q import MobiuQCore
-
 opt = MobiuQCore(
     license_key="YOUR_KEY",
     method="adaptive",
@@ -42,29 +39,92 @@ opt = MobiuQCore(
 | Environment | Improvement | p-value | Win Rate |
 |-------------|-------------|---------|----------|
 | **LunarLander-v3** | **+129.7%** | <0.001 | 96.7% |
-| **MuJoCo InvertedPendulum** | **+118.6%** | <0.001 | 100% |
-| **Crypto Trading** | **+10.9%** profit | <0.005 | 90% |
+| **MuJoCo InvertedPendulum** | **+118.6%** | 0.001 | 100% |
+| **MuJoCo Hopper** | **+41.2%** | 0.007 | 80% |
 
 ---
 
-## ⚛️ Quantum Computing
+## 📐 Classical Optimization
 
-### VQE Configuration
+### Configuration
 ```python
 opt = MobiuQCore(
     license_key="YOUR_KEY",
     method="standard",
-    mode="hardware",
+    base_optimizer="Adam",
+    base_lr=0.01
+)
+```
+
+### Verified Results
+
+| Function | Improvement | Landscape |
+|----------|-------------|-----------|
+| **Rosenbrock** | **+75.8%** | Valley |
+| **Beale** | **+62.0%** | Plateau |
+| **Sphere** | **+31.1%** | Convex |
+
+---
+
+## ⚛️ Quantum VQE - Condensed Matter
+
+### Configuration
+```python
+opt = MobiuQCore(
+    license_key="YOUR_KEY",
+    method="standard",
+    mode="simulation",  # or "hardware" for noisy
     base_optimizer="Adam"
 )
 ```
 
-### QAOA Configuration
+### Verified Results
+
+| Model | Improvement |
+|-------|-------------|
+| **SSH Model (Topological)** | **+61.0%** |
+| **XY Model** | **+60.8%** |
+| **Ferro Ising** | **+45.1%** |
+| **Transverse Ising** | **+42.0%** |
+| **Heisenberg XXZ** | **+20.8%** |
+| **Kitaev Chain** | **+20.4%** |
+| **Hubbard Dimer** | **+14.1%** |
+
+---
+
+## ⚛️ Quantum VQE - Chemistry
+
+### Configuration
+```python
+opt = MobiuQCore(
+    license_key="YOUR_KEY",
+    method="standard",
+    mode="hardware",  # Recommended for real hardware
+    base_optimizer="Adam"
+)
+```
+
+### Verified Results
+
+| Molecule | Improvement | Notes |
+|----------|-------------|-------|
+| **FakeFez H₂** | **+52.4%** | p=0.043, IBM noise |
+| **He Atom** | **+51.2%** | |
+| **H₂ Molecule** | **+46.6%** | |
+| **H₃⁺ Chain** | **+42.0%** | |
+| **LiH Molecule** | **+41.4%** | |
+| **BeH₂ Molecule** | **+37.8%** | |
+
+---
+
+## 🎯 QAOA (Combinatorial Optimization)
+
+### Configuration
 ```python
 opt = MobiuQCore(
     license_key="YOUR_KEY",
     method="deep",
-    mode="simulation",
+    mode="hardware",
     base_optimizer="SGD",
     base_lr=0.1
 )
@@ -72,91 +132,55 @@ opt = MobiuQCore(
 
 ### Verified Results
 
-| Test | Improvement | Win Rate | Config |
-|------|-------------|----------|--------|
-| **FakeFez VQE H2** | **+53.1%** | 100% | Adam, mode=hardware |
-| **Noise Robustness** | **+32.5%** | 80% | Momentum, mode=hardware |
-| **QAOA MaxCut** | **+30.5%** | - | SGD, method=deep |
-
-### Deep Circuits (depth ≥ 8)
-Use **method=deep** for best results (+7-12% improvement)
+| Problem | Improvement | Wins | Notes |
+|---------|-------------|------|-------|
+| **FakeFez MaxCut** | **+45.1%** | 10/10 | p=0.0003 |
+| **Vertex Cover** | **+31.9%** | 51/60 | |
+| **Max Independent Set** | **+31.9%** | 51/60 | |
+| **MaxCut** | **+21.5%** | 45/60 | |
 
 ---
 
-## 🔬 Materials Science
+## 💰 Finance (QUBO)
 
 ### Configuration
 ```python
 opt = MobiuQCore(
     license_key="YOUR_KEY",
     method="standard",
-    mode="simulation"
-)
-```
-
-### Verified Results
-
-| Task | Improvement | Win Rate |
-|------|-------------|----------|
-| **Bulk Modulus** | **+98.3%** | 100% |
-| **Band Gap** | **+66.8%** | 100% |
-| **Formation Energy** | **+26.9%** | 100% |
-
----
-
-## 💊 Drug Discovery
-
-### ⚠️ Task-Specific Configuration Required
-
-| Task | Improvement | method | base_lr |
-|------|-------------|--------|---------|
-| **Solubility** | **+80.5%** | deep | 0.0008 |
-| **Binding Affinity** | **+54.0%** | adaptive | 0.001 |
-| **Toxicity** | **+23.5%** | standard | 0.0005 |
-
----
-
-## 🤖 LLM Fine-tuning
-
-### Soft Prompt Configuration
-```python
-opt = MobiuQCore(
-    license_key="YOUR_KEY",
-    method="standard",
-    base_optimizer="Momentum",
+    mode="simulation",
+    base_optimizer="Adam",
     base_lr=0.01
 )
 ```
 
 ### Verified Results
 
-| Task | Improvement | Config |
-|------|-------------|--------|
-| **GPT-2 Medium** | **+21.2% PPL** | Adam |
-| **Soft Prompt** | **+18.1%** | Momentum |
-| **GPT-2 Small** | **+3.9% PPL** | Adam |
+| Problem | Improvement |
+|---------|-------------|
+| **Credit Risk** | **+52.3%** |
+| **Portfolio Optimization** | **+51.7%** |
 
 ---
 
-## 🔧 LoRA Fine-tuning
+## 💊 Drug Discovery
 
 ### Configuration
 ```python
 opt = MobiuQCore(
     license_key="YOUR_KEY",
     method="standard",
-    base_optimizer="Momentum",
-    base_lr=0.02
+    mode="simulation",
+    base_optimizer="AMSGrad",
+    base_lr=0.01
 )
 ```
 
 ### Verified Results
 
-| Config | Improvement | Win Rate |
-|--------|-------------|----------|
-| **r16-Momentum** | **+97.6%** | 100% |
-| **r8-HighLR** | **+92.6%** | 100% |
-| **r32-SGD** | **+90.2%** | 100% |
+| Task | Improvement |
+|------|-------------|
+| **Binding Affinity** | **+12.2%** |
 
 ---
 
@@ -165,35 +189,56 @@ opt = MobiuQCore(
 | Domain | method | mode | base_optimizer | base_lr |
 |--------|--------|------|----------------|---------|
 | **RL** | adaptive | simulation | Adam | 0.0003 |
+| **Classical** | standard | simulation | Adam | 0.01 |
 | **VQE Clean** | standard | simulation | Adam | 0.01 |
-| **VQE Noisy** | standard | hardware | Adam | (auto) |
-| **QAOA** | deep | simulation | SGD | 0.1 |
-| **Materials** | standard | simulation | Adam | 0.01 |
-| **Drug - Solubility** | deep | simulation | Adam | 0.0008 |
-| **Drug - Binding** | adaptive | simulation | Adam | 0.001 |
-| **Drug - Toxicity** | standard | simulation | Adam | 0.0005 |
-| **LLM Soft Prompt** | standard | simulation | Momentum | 0.01 |
-| **LLM Training** | standard | simulation | Adam | 5e-5 |
-| **LoRA** | standard | simulation | Momentum | 0.02 |
+| **VQE Noisy** | standard | hardware | Adam | 0.02 |
+| **QAOA** | deep | hardware | SGD | 0.1 |
+| **Finance** | standard | simulation | Adam | 0.01 |
+| **Drug** | standard | simulation | AMSGrad | 0.01 |
 
 ---
 
-## 🔗 API Reference
+## 🔧 Default Learning Rates
 
-### Optimizers
-- `Adam` - Default, most cases
-- `Momentum` - LLM/LoRA
-- `SGD` - QAOA/deep circuits
-- `NAdam`, `AMSGrad` - Alternatives
+| Method | Mode | Default LR |
+|--------|------|------------|
+| standard | simulation | **0.01** |
+| standard | hardware | **0.02** |
+| deep | any | **0.1** |
+| adaptive | any | **0.0003** |
 
-### Methods
-- `standard` - VQE, LLM, Materials, most cases
-- `deep` - QAOA, combinatorial optimization, deep circuits
-- `adaptive` - RL, high-variance environments
+---
 
-### Modes
-- `simulation` - Clean environments
-- `hardware` - Noisy/real hardware
+## 🔗 Available Optimizers
+
+| Optimizer | Best For |
+|-----------|----------|
+| **Adam** | Default, most cases |
+| **AdamW** | LLM, weight decay |
+| **SGD** | QAOA |
+| **AMSGrad** | Drug Discovery |
+| **NAdam** | Alternative to Adam |
+| **Momentum** | RL alternative |
+| **LAMB** | Large batch |
+
+**Note:** Optimizer names are case-sensitive!
+
+---
+
+## 🔧 Troubleshooting
+
+### 1. Switch Method
+| If This Fails | Try This |
+|---------------|----------|
+| standard | adaptive |
+| adaptive | deep |
+| deep | standard |
+
+### 2. Adjust Learning Rate
+| Issue | Action |
+|-------|--------|
+| Diverging | Lower LR by 2-5x |
+| No progress | Increase LR by 2x |
 
 ---
 

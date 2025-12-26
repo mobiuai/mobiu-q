@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.5.5 - New Method Names + Noise Robustness + LLM Support
+Version: 2.5.6 - New Method Names + Noise Robustness + LLM Support
 
 Method names (v2.5+):
 - method='standard' (was 'vqe'): For smooth landscapes, chemistry, physics
