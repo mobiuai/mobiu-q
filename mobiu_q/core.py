@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.5.6 - New Method Names + Noise Robustness + LLM Support
+Version: 2.6 - New Method Names + Noise Robustness + LLM Support
 
 Method names (v2.5+):
 - method='standard' (was 'vqe'): For smooth landscapes, chemistry, physics
@@ -210,6 +210,24 @@ class MobiuQCore:
                 params = opt.step(params, grad, energy)
         
         opt.end()  # Counts as 1 run total
+
+    Example (Auto gradient - recommended):
+        opt = MobiuQCore(license_key="xxx", method="standard")
+        
+        for step in range(100):
+            params = opt.step(params, energy_fn)  # Gradient auto-computed!
+        
+        opt.end()
+    
+    Example (Manual gradient - backward compatible):
+        opt = MobiuQCore(license_key="xxx", method="standard")
+        
+        for step in range(100):
+            grad = my_custom_gradient(params)
+            energy = energy_fn(params)
+            params = opt.step(params, grad, energy)
+        
+        opt.end()
     """
     
     def __init__(
@@ -427,27 +445,49 @@ class MobiuQCore:
     def step(
         self, 
         params: np.ndarray, 
-        gradient: np.ndarray, 
-        energy: float
+        gradient_or_fn, 
+        energy: float = None
     ) -> np.ndarray:
         """
         Perform one optimization step.
-        
+    
         Args:
             params: Current parameter values
-            gradient: Gradient of the objective w.r.t. params
-            energy: Current objective value (energy for quantum, loss for LLM, return for RL)
-        
+            gradient_or_fn: Either:
+                - np.ndarray: Gradient (backward compatible)
+                - Callable: Energy function - gradient computed automatically based on method
+            energy: Current objective value. Required if gradient_or_fn is array.
+                    Auto-computed if gradient_or_fn is callable.
+    
         Returns:
             Updated parameters
+    
+        Examples:
+            # Auto gradient (recommended):
+            params = opt.step(params, energy_fn)
         
-        Note:
-            For RL (method='adaptive'), pass the episode return as 'energy'.
-            Higher returns are better (maximization).
-            
-            For LLM fine-tuning, pass the loss as 'energy'.
-            Lower loss is better (minimization).
+            # Manual gradient (backward compatible):
+            grad = my_custom_gradient(params)
+            params = opt.step(params, grad, energy)
+    
+        Gradient methods by method:
+            - standard: finite_difference (2N evaluations, exact)
+            - deep: SPSA (2 evaluations, noisy hardware)
+            - adaptive: SPSA (2 evaluations, high-variance)
         """
+        # Auto-compute gradient if function provided
+        if callable(gradient_or_fn):
+            energy_fn = gradient_or_fn
+            if self.method == "standard":
+                gradient = Demeasurement.finite_difference(energy_fn, params)
+                energy = energy_fn(params)
+            else:  # deep, adaptive - use SPSA
+                gradient, energy = Demeasurement.spsa(energy_fn, params)
+        else:
+            gradient = gradient_or_fn
+            if energy is None:
+                raise ValueError("energy is required when providing gradient array")
+    
         self.energy_history.append(energy)
         
         if self._offline_mode:

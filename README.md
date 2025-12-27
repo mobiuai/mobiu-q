@@ -1,4 +1,4 @@
-# Mobiu-Q v2.5.6
+# Mobiu-Q v2.6
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -7,7 +7,7 @@
 
 ---
 
-## 🚀 What's New in v2.5.6
+## 🚀 What's New in v2.6
 
 - **Comprehensive Validation**: 30+ problems tested across 7 domains
 - **Quantum Hardware**: Validated on IBM FakeFez realistic noise models
@@ -85,78 +85,18 @@ pip install mobiu-q
 
 ## ⚡ Quick Start
 
-### 1. Reinforcement Learning
-
 ```python
-from mobiu_q import MobiuQCore
-
-opt = MobiuQCore(
-    license_key="YOUR-KEY",
-    method="adaptive",
-    base_optimizer="Adam",
-    base_lr=0.0003
-)
-
-for episode in range(1000):
-    episode_return = run_episode(policy)
-    gradient = compute_policy_gradient()
-    policy_params = opt.step(policy_params, gradient, episode_return)
-
-opt.end()
-```
-
-### 2. VQE (Quantum Chemistry)
-
-```python
-opt = MobiuQCore(
-    license_key="YOUR-KEY",
-    method="standard",
-    mode="hardware",
-    base_optimizer="Adam"
-)
-
+# Simple - Auto gradient
+opt = MobiuQCore(method="standard")
 for step in range(100):
-    energy = compute_vqe_energy(params)
-    grad = finite_difference_gradient(energy_fn, params)
-    params = opt.step(params, grad, energy)
-
+    params = opt.step(params, energy_fn)
 opt.end()
-```
 
-### 3. QAOA (Combinatorial Optimization)
-
-```python
-opt = MobiuQCore(
-    license_key="YOUR-KEY",
-    method="deep",
-    mode="hardware",
-    base_optimizer="SGD",
-    base_lr=0.1
-)
-
-for step in range(150):
-    cost = compute_qaoa_cost(params)
-    grad = spsa_gradient(cost_fn, params)
-    params = opt.step(params, grad, cost)
-
-opt.end()
-```
-
-### 4. Finance (Portfolio/Credit Risk)
-
-```python
-opt = MobiuQCore(
-    license_key="YOUR-KEY",
-    method="standard",
-    base_optimizer="Adam",
-    base_lr=0.01
-)
-
-for epoch in range(100):
-    loss = compute_portfolio_loss(weights)
-    gradient = compute_gradients()
-    weights = opt.step(weights, gradient, loss)
-
+# Advanced - Manual gradient (backward compatible)
+opt = MobiuQCore(method="standard")
+for step in range(100):
+    grad = my_custom_gradient(params)
+    params = opt.step(params, grad, energy_fn(params))
 opt.end()
 ```
 
