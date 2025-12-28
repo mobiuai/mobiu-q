@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.7.3 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.7.4 - Universal MobiuOptimizer + Hybrid Mode
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -975,19 +975,22 @@ class MobiuQCore:
             grad = my_custom_gradient(params)
             params = opt.step(params, grad, energy)
     
-        Gradient methods by method:
-            - standard: finite_difference (2N evaluations, exact)
-            - deep: SPSA (2 evaluations, noisy hardware)
-            - adaptive: SPSA (2 evaluations, high-variance)
+        Gradient methods by mode:
+            - simulation: finite_difference (2N evaluations, exact)
+            - hardware: SPSA (2 evaluations, noisy-resilient)
         """
         # Auto-compute gradient if function provided
         if callable(gradient_or_fn):
             energy_fn = gradient_or_fn
-            if self.method == "standard":
+    
+            # Mode determines gradient method (not method!)
+            # hardware = noisy environment → SPSA
+            # simulation = clean environment → finite difference
+            if self.mode == "hardware":
+                gradient, energy = Demeasurement.spsa(energy_fn, params)
+            else:  # simulation
                 gradient = Demeasurement.finite_difference(energy_fn, params)
                 energy = energy_fn(params)
-            else:  # deep, adaptive - use SPSA
-                gradient, energy = Demeasurement.spsa(energy_fn, params)
         else:
             gradient = gradient_or_fn
             if energy is None:
@@ -1325,7 +1328,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.7.1"
+__version__ = "2.7.4"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
