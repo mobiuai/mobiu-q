@@ -3,57 +3,53 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.6 - New Method Names + Noise Robustness + LLM Support
+Version: 2.7.0 - Universal MobiuOptimizer + Hybrid Mode
 
-Method names (v2.5+):
+NEW in v2.7:
+- MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
+- Hybrid mode: Uses cloud for Soft Algebra intelligence, local PyTorch for updates
+- Zero friction: Same API for quantum and deep learning
+
+Method names:
 - method='standard' (was 'vqe'): For smooth landscapes, chemistry, physics
 - method='deep' (was 'qaoa'): For deep circuits, noisy hardware, complex optimization
 - method='adaptive' (was 'rl'): For RL, LLM fine-tuning, high-variance problems
 
 Backward compatible: 'vqe', 'qaoa', 'rl' still work!
 
-Benchmark Results:
-- 80% win rate across all noise levels
-- +32.5% more robust to quantum hardware noise
-- +5% to +65% improvement over standard optimizers
-- +18% improvement on LLM soft prompt tuning
+Usage (PyTorch - NEW!):
+    import torch
+    from mobiu_q import MobiuOptimizer
+    
+    base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+    opt = MobiuOptimizer(base_opt, license_key="your-key", method="adaptive")
+    
+    for epoch in range(100):
+        loss = compute_loss(model, batch)
+        loss.backward()
+        opt.step(loss.item())  # Mobiu-Q adjusts LR, PyTorch updates weights
+        opt.zero_grad()
+    
+    opt.end()
 
-Usage (Quantum VQE):
-    from mobiu_q import MobiuQCore, Demeasurement
+Usage (Quantum - unchanged):
+    from mobiu_q import MobiuQCore
     
     opt = MobiuQCore(license_key="your-key", method="standard")
     
     for step in range(100):
-        grad = Demeasurement.finite_difference(energy_fn, params)
-        params = opt.step(params, grad, energy_fn(params))
-    
-    opt.end()
-
-Usage (Deep circuits / Noisy hardware):
-    opt = MobiuQCore(license_key="your-key", method="deep", mode="hardware")
-    
-    for step in range(150):
-        grad, energy = Demeasurement.spsa(energy_fn, params)
-        params = opt.step(params, grad, energy)
-    
-    opt.end()
-
-Usage (RL / LLM fine-tuning):
-    opt = MobiuQCore(license_key="your-key", method="adaptive")
-    
-    for episode in range(1000):
-        # ... run episode or forward pass, compute gradient ...
-        opt.step(params, gradient, loss_or_return)
+        params = opt.step(params, energy_fn)
     
     opt.end()
 """
 
 import numpy as np
 import requests
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 import os
 import json
 import warnings
+import time
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -66,8 +62,8 @@ API_ENDPOINT = os.environ.get(
 
 LICENSE_KEY_FILE = os.path.expanduser("~/.mobiu_q_license")
 
-# Available optimizers
-AVAILABLE_OPTIMIZERS = ["Adam", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"]
+# Available optimizers (must match server's AVAILABLE_OPTIMIZERS)
+AVAILABLE_OPTIMIZERS = ["Adam", "AdamW", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"]
 DEFAULT_OPTIMIZER = "Adam"
 
 # Method name mapping (new names + legacy support)
@@ -123,7 +119,6 @@ def get_default_lr(method: str, mode: str) -> float:
     
     Legacy names (vqe, qaoa, rl) are automatically mapped.
     """
-    # Map legacy names to new names
     method = METHOD_ALIASES.get(method, method)
     
     if method == 'adaptive':
@@ -137,15 +132,498 @@ def get_default_lr(method: str, mode: str) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MOBIU-Q CORE (Cloud Client)
+# MOBIU OPTIMIZER - UNIVERSAL WRAPPER (NEW in v2.7!)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class MobiuOptimizer:
+    """
+    Universal Mobiu-Q Optimizer - wraps any optimizer with Soft Algebra intelligence.
+    
+    Auto-detects PyTorch optimizers and uses hybrid mode:
+    - Cloud computes adaptive learning rate (Soft Algebra + Super-Equation)
+    - Local PyTorch handles weight updates (fast, precise, GPU-accelerated)
+    
+    For non-PyTorch usage (quantum), delegates to MobiuQCore.
+    
+    Args:
+        optimizer_or_params: Either:
+            - torch.optim.Optimizer: PyTorch optimizer to wrap (hybrid mode)
+            - np.ndarray or list: Initial parameters (quantum mode, uses MobiuQCore)
+        license_key: Your Mobiu-Q license key
+        method: "standard", "deep", or "adaptive" (legacy: "vqe", "qaoa", "rl")
+        verbose: Print status messages
+        **kwargs: Additional arguments passed to MobiuQCore (quantum mode only)
+    
+    Example (PyTorch - Recommended for RL/LLM):
+        import torch
+        from mobiu_q import MobiuOptimizer
+        
+        model = MyModel()
+        base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+        opt = MobiuOptimizer(base_opt, method="adaptive")
+        
+        for epoch in range(100):
+            loss = criterion(model(x), y)
+            loss.backward()
+            opt.step(loss.item())  # Pass loss value for Soft Algebra
+            opt.zero_grad()
+        
+        opt.end()
+    
+    Example (RL with episode returns):
+        opt = MobiuOptimizer(base_opt, method="adaptive")
+        
+        for episode in range(1000):
+            # ... run episode, compute policy gradient ...
+            loss.backward()
+            opt.step(episode_return)  # Pass return for Soft Algebra
+            opt.zero_grad()
+        
+        opt.end()
+    
+    Example (Quantum - delegates to MobiuQCore):
+        params = np.random.randn(10)
+        opt = MobiuOptimizer(params, method="standard")
+        
+        for step in range(100):
+            params = opt.step(params, gradient, energy)
+        
+        opt.end()
+    """
+    
+    def __init__(
+        self,
+        optimizer_or_params,
+        license_key: Optional[str] = None,
+        method: str = "adaptive",
+        verbose: bool = True,
+        # Legacy parameter
+        problem: Optional[str] = None,
+        **kwargs
+    ):
+        self.license_key = license_key or get_license_key()
+        if not self.license_key:
+            raise ValueError(
+                "License key required. Set MOBIU_Q_LICENSE_KEY environment variable, "
+                "or pass license_key parameter, or run: mobiu-q activate YOUR_KEY"
+            )
+        
+        # Handle deprecated 'problem' parameter
+        if problem is not None:
+            warnings.warn(
+                "Parameter 'problem' is deprecated, use 'method' instead",
+                DeprecationWarning,
+                stacklevel=2
+            )
+            if method == "adaptive":  # Only override if method wasn't explicitly set
+                method = problem
+        
+        # Validate method
+        if method not in VALID_METHODS:
+            raise ValueError(f"method must be one of {VALID_METHODS}, got '{method}'")
+        
+        self.method = METHOD_ALIASES.get(method, method)
+        self._original_method = method
+        self.verbose = verbose
+        
+        # Auto-detect: Is this a PyTorch optimizer?
+        self._is_pytorch = (
+            hasattr(optimizer_or_params, 'step') and 
+            hasattr(optimizer_or_params, 'param_groups') and
+            hasattr(optimizer_or_params, 'zero_grad')
+        )
+        
+        if self._is_pytorch:
+            # Hybrid mode: PyTorch optimizer + Cloud LR
+            self._backend = _MobiuPyTorchBackend(
+                optimizer_or_params, 
+                self.license_key, 
+                self.method,
+                verbose=verbose
+            )
+        else:
+            # Quantum mode: Full cloud optimization
+            self._backend = MobiuQCore(
+                license_key=self.license_key,
+                method=method,
+                verbose=verbose,
+                **kwargs
+            )
+    
+    @property
+    def problem(self) -> str:
+        """Deprecated: Use 'method' instead."""
+        warnings.warn(
+            "Attribute 'problem' is deprecated, use 'method' instead",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return self.method
+    
+    def step(self, *args, **kwargs):
+        """
+        Perform optimization step.
+        
+        For PyTorch (hybrid mode):
+            opt.step(loss_value)  # Pass scalar loss/return
+            opt.step()            # Use last loss value
+        
+        For Quantum (MobiuQCore mode):
+            params = opt.step(params, gradient, energy)
+            params = opt.step(params, energy_fn)  # Auto-gradient
+        """
+        return self._backend.step(*args, **kwargs)
+    
+    def zero_grad(self):
+        """Zero gradients (PyTorch mode only)."""
+        if hasattr(self._backend, 'zero_grad'):
+            self._backend.zero_grad()
+    
+    def end(self):
+        """End optimization session."""
+        self._backend.end()
+    
+    def new_run(self):
+        """Reset for new optimization run (multi-seed experiments)."""
+        if hasattr(self._backend, 'new_run'):
+            self._backend.new_run()
+    
+    def reset(self):
+        """
+        DEPRECATED: Use new_run() for multi-seed experiments.
+        """
+        warnings.warn(
+            "reset() is deprecated and counts each call as a separate run. "
+            "Use new_run() for multi-seed experiments (counts as 1 run total).",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        if hasattr(self._backend, 'reset'):
+            self._backend.reset()
+        else:
+            self.end()
+            self._backend._start_session()
+    
+    def check_usage(self) -> dict:
+        """Check current usage without affecting quota."""
+        if hasattr(self._backend, 'check_usage'):
+            return self._backend.check_usage()
+        return {}
+    
+    def get_server_info(self) -> dict:
+        """Get server information including available methods and optimizers."""
+        if hasattr(self._backend, 'get_server_info'):
+            return self._backend.get_server_info()
+        return {
+            "available_optimizers": AVAILABLE_OPTIMIZERS,
+            "default_optimizer": DEFAULT_OPTIMIZER,
+            "methods": ["standard", "deep", "adaptive"],
+            "legacy_methods": ["vqe", "qaoa", "rl"]
+        }
+    
+    @property
+    def is_pytorch_mode(self) -> bool:
+        """True if using hybrid PyTorch mode."""
+        return self._is_pytorch
+    
+    @property
+    def energy_history(self) -> List[float]:
+        """Energy/loss history."""
+        return self._backend.energy_history
+    
+    @property
+    def lr_history(self) -> List[float]:
+        """Learning rate history."""
+        return self._backend.lr_history
+    
+    @property
+    def remaining_runs(self) -> Optional[int]:
+        """Get remaining runs (None if unknown or unlimited)."""
+        if hasattr(self._backend, 'remaining_runs'):
+            return self._backend.remaining_runs
+        return None
+    
+    @property
+    def available_optimizers(self) -> List[str]:
+        """List of available optimizers."""
+        if hasattr(self._backend, 'available_optimizers'):
+            return self._backend.available_optimizers
+        return AVAILABLE_OPTIMIZERS
+    
+    def __del__(self):
+        try:
+            self.end()
+        except:
+            pass
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# PYTORCH BACKEND (INTERNAL)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class _MobiuPyTorchBackend:
+    """
+    Internal backend for PyTorch hybrid mode.
+    
+    - Sends energy/loss to cloud
+    - Receives adaptive_lr from cloud (Soft Algebra intelligence)
+    - Updates local PyTorch optimizer's LR
+    - Executes step locally (fast, precise)
+    """
+    
+    def __init__(self, optimizer, license_key: str, method: str, verbose: bool = True):
+        self.optimizer = optimizer
+        self.license_key = license_key
+        self.method = method
+        self.verbose = verbose
+        self.session_id = None
+        self.api_endpoint = API_ENDPOINT
+        
+        # Get base LR from optimizer
+        self.base_lr = optimizer.param_groups[0]['lr']
+        
+        # Tracking
+        self.energy_history = []
+        self.lr_history = []
+        self._last_energy = None
+        self._usage_info = None
+        self._available_optimizers = AVAILABLE_OPTIMIZERS
+        
+        # Start session
+        self._start_session()
+    
+    def _start_session(self):
+        """Initialize cloud session."""
+        try:
+            r = requests.post(self.api_endpoint, json={
+                'action': 'start',
+                'license_key': self.license_key,
+                'method': self.method,
+                'mode': 'simulation',
+                'base_lr': self.base_lr,
+                'base_optimizer': 'Adam',  # Doesn't matter - we use local
+                'use_soft_algebra': True
+            }, timeout=10)
+            
+            data = r.json()
+            
+            if data.get('success'):
+                self.session_id = data['session_id']
+                self._usage_info = data.get('usage', {})
+                self._available_optimizers = data.get('available_optimizers', AVAILABLE_OPTIMIZERS)
+                
+                if self.verbose:
+                    remaining = self._usage_info.get('remaining', 'unknown')
+                    tier = self._usage_info.get('tier', 'unknown')
+                    
+                    mode_str = f"method={self.method}, base_lr={self.base_lr}"
+                    
+                    if remaining == 'unlimited':
+                        print(f"🚀 Mobiu-Q Hybrid session started (Pro tier) [{mode_str}]")
+                    elif isinstance(remaining, int):
+                        if remaining <= 2:
+                            print(f"⚠️  Mobiu-Q Hybrid session started - LOW QUOTA: {remaining} runs remaining!")
+                        else:
+                            print(f"🚀 Mobiu-Q Hybrid session started ({remaining} runs remaining) [{mode_str}]")
+                    else:
+                        print(f"🚀 Mobiu-Q Hybrid session started [{mode_str}]")
+            else:
+                if self.verbose:
+                    error = data.get('error', 'Unknown error')
+                    if "limit" in error.lower() or "quota" in error.lower():
+                        print(f"❌ {error}")
+                        print("   Upgrade at: https://app.mobiu.ai")
+                    else:
+                        print(f"⚠️  API start failed: {error}. Using constant LR.")
+                    
+        except Exception as e:
+            if self.verbose:
+                print(f"⚠️  Cannot connect to Mobiu-Q: {e}. Using constant LR.")
+    
+    def step(self, energy: float = None):
+        """
+        Perform hybrid optimization step.
+        
+        1. Send energy to cloud (minimal payload)
+        2. Get adaptive_lr back
+        3. Update local optimizer's LR
+        4. Execute local PyTorch step
+        
+        Args:
+            energy: Loss value or episode return. If None, uses last value.
+        """
+        # Handle energy
+        if energy is not None:
+            self._last_energy = float(energy)
+            self.energy_history.append(self._last_energy)
+        
+        # Get adaptive LR from cloud
+        if self.session_id and self._last_energy is not None:
+            try:
+                # Retry loop for rate limiting
+                for attempt in range(3):
+                    r = requests.post(self.api_endpoint, json={
+                        'action': 'step',
+                        'license_key': self.license_key,
+                        'session_id': self.session_id,
+                        'params': [0.0],      # Dummy - minimal payload
+                        'gradient': [0.0],    # Dummy - minimal payload
+                        'energy': self._last_energy
+                    }, timeout=1.0)  # Fast timeout
+                    
+                    if r.status_code == 429:  # Rate limited
+                        if attempt < 2:
+                            time.sleep(0.1)
+                            continue
+                        else:
+                            break  # Give up, use current LR
+                    break
+                
+                data = r.json()
+                
+                if data.get('success') and 'adaptive_lr' in data:
+                    new_lr = data['adaptive_lr']
+                    self.lr_history.append(new_lr)
+                    
+                    # Update local optimizer's LR
+                    for param_group in self.optimizer.param_groups:
+                        param_group['lr'] = new_lr
+                        
+            except Exception:
+                # On failure, keep using current LR (don't crash training)
+                pass
+        
+        # Execute local PyTorch step (the actual weight update)
+        self.optimizer.step()
+    
+    def zero_grad(self):
+        """Zero gradients."""
+        self.optimizer.zero_grad()
+    
+    def new_run(self):
+        """Reset for new run."""
+        self.energy_history.clear()
+        self.lr_history.clear()
+        self._last_energy = None
+        
+        # Reset optimizer state (momentum, etc.)
+        self.optimizer.state.clear()
+        
+        # Reset LR to base
+        for group in self.optimizer.param_groups:
+            group['lr'] = self.base_lr
+        
+        # Reset cloud session state
+        if self.session_id:
+            try:
+                requests.post(self.api_endpoint, json={
+                    'action': 'reset',
+                    'license_key': self.license_key,
+                    'session_id': self.session_id
+                }, timeout=5)
+            except:
+                pass
+    
+    def check_usage(self) -> dict:
+        """Check current usage without affecting quota."""
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                json={
+                    "license_key": self.license_key,
+                    "action": "usage"
+                },
+                timeout=10
+            )
+            data = response.json()
+            if data.get("success"):
+                self._usage_info = data.get("usage", {})
+                return self._usage_info
+        except:
+            pass
+        return {}
+    
+    def get_server_info(self) -> dict:
+        """Get server information."""
+        try:
+            response = requests.post(
+                self.api_endpoint,
+                json={
+                    "license_key": self.license_key,
+                    "action": "info"
+                },
+                timeout=10
+            )
+            data = response.json()
+            if data.get("success"):
+                return data
+        except:
+            pass
+        return {
+            "available_optimizers": AVAILABLE_OPTIMIZERS,
+            "default_optimizer": DEFAULT_OPTIMIZER,
+            "methods": ["standard", "deep", "adaptive"],
+            "legacy_methods": ["vqe", "qaoa", "rl"]
+        }
+    
+    @property
+    def remaining_runs(self) -> Optional[int]:
+        """Get remaining runs."""
+        if self._usage_info:
+            remaining = self._usage_info.get('remaining')
+            if remaining == 'unlimited':
+                return None
+            return remaining
+        return None
+    
+    @property
+    def available_optimizers(self) -> List[str]:
+        """List of available optimizers."""
+        return self._available_optimizers
+    
+    def end(self):
+        """End session."""
+        if self.session_id:
+            try:
+                response = requests.post(self.api_endpoint, json={
+                    'action': 'end',
+                    'license_key': self.license_key,
+                    'session_id': self.session_id
+                }, timeout=5)
+                
+                data = response.json()
+                self._usage_info = data.get('usage', {})
+                
+                if self.verbose:
+                    remaining = self._usage_info.get('remaining', 'unknown')
+                    
+                    if remaining == 'unlimited':
+                        print(f"✅ Session ended (Pro tier)")
+                    elif remaining == 0:
+                        print(f"✅ Session ended")
+                        print(f"❌ Quota exhausted! Upgrade at: https://app.mobiu.ai")
+                    elif isinstance(remaining, int) and remaining <= 2:
+                        print(f"✅ Session ended")
+                        print(f"⚠️  Low quota warning: {remaining} runs remaining")
+                    else:
+                        print(f"✅ Session ended ({remaining} runs remaining)")
+                    
+            except Exception as e:
+                if self.verbose:
+                    print(f"⚠️  Could not cleanly end session: {e}")
+            
+            self.session_id = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MOBIU-Q CORE (Cloud Client) - FULL BACKWARD COMPATIBILITY
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class MobiuQCore:
     """
-    Mobiu-Q Optimizer - Cloud-connected version.
+    Mobiu-Q Optimizer - Cloud-connected version for quantum optimization.
     
-    The optimization logic runs on Mobiu's secure servers.
-    This client handles communication and local state.
+    For PyTorch users, consider using MobiuOptimizer instead for better performance.
     
     Args:
         license_key: Your Mobiu-Q license key (or set MOBIU_Q_LICENSE_KEY env var)
@@ -155,15 +633,9 @@ class MobiuQCore:
             - "adaptive" (or legacy "rl"): For RL, LLM fine-tuning, high-variance
         mode: "simulation" (clean) or "hardware" (noisy quantum hardware)
         base_lr: Learning rate (default: computed from method+mode)
-        base_optimizer: Optimizer: "Adam" (default), "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"
+        base_optimizer: Optimizer: "Adam" (default), "AdamW", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"
         use_soft_algebra: Enable Soft Algebra enhancement (default: True)
         offline_fallback: If True, use local Adam when API unavailable
-    
-    Benchmark Results (v2.5):
-        - 80% win rate across all noise levels
-        - +32.5% more robust to quantum hardware noise
-        - +5% to +65% improvement over standard optimizers
-        - +18% improvement on LLM soft prompt tuning
     
     Default Learning Rates:
         | Method    | Mode       | Default LR |
@@ -183,20 +655,11 @@ class MobiuQCore:
         
         opt.end()
     
-    Example (Deep circuits / Noisy hardware):
-        opt = MobiuQCore(license_key="xxx", method="deep", mode="hardware")
+    Example (Auto gradient - recommended):
+        opt = MobiuQCore(license_key="xxx", method="standard")
         
-        for step in range(150):
-            grad, energy = Demeasurement.spsa(energy_fn, params)
-            params = opt.step(params, grad, energy)
-        
-        opt.end()
-    
-    Example (RL / LLM fine-tuning):
-        opt = MobiuQCore(license_key="xxx", method="adaptive")
-        
-        for episode in range(1000):
-            params = opt.step(params, policy_gradient, episode_return)
+        for step in range(100):
+            params = opt.step(params, energy_fn)  # Gradient auto-computed!
         
         opt.end()
     
@@ -210,31 +673,13 @@ class MobiuQCore:
                 params = opt.step(params, grad, energy)
         
         opt.end()  # Counts as 1 run total
-
-    Example (Auto gradient - recommended):
-        opt = MobiuQCore(license_key="xxx", method="standard")
-        
-        for step in range(100):
-            params = opt.step(params, energy_fn)  # Gradient auto-computed!
-        
-        opt.end()
-    
-    Example (Manual gradient - backward compatible):
-        opt = MobiuQCore(license_key="xxx", method="standard")
-        
-        for step in range(100):
-            grad = my_custom_gradient(params)
-            energy = energy_fn(params)
-            params = opt.step(params, grad, energy)
-        
-        opt.end()
     """
     
     def __init__(
         self,
         license_key: Optional[str] = None,
-        method: str = "standard",       # "standard", "deep", "adaptive" (or legacy: "vqe", "qaoa", "rl")
-        mode: str = "simulation",        # "simulation" or "hardware"
+        method: str = "standard",
+        mode: str = "simulation",
         base_lr: Optional[float] = None,
         base_optimizer: str = DEFAULT_OPTIMIZER,
         use_soft_algebra: bool = True,
@@ -511,7 +956,6 @@ class MobiuQCore:
                 
                 if response.status_code == 429:  # Rate limited
                     if attempt < 2:
-                        import time
                         time.sleep(1)
                         continue
                     else:
@@ -821,15 +1265,23 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.5.0"
+__version__ = "2.7.0"
 __all__ = [
+    # New universal optimizer (v2.7)
+    "MobiuOptimizer",
+    # Legacy (still fully supported)
     "MobiuQCore",
     "Demeasurement",
+    # Utilities
     "activate_license",
     "check_status",
     "get_default_lr",
+    "get_license_key",
+    "save_license_key",
+    # Constants
     "AVAILABLE_OPTIMIZERS",
     "DEFAULT_OPTIMIZER",
     "METHOD_ALIASES",
-    "VALID_METHODS"
+    "VALID_METHODS",
+    "API_ENDPOINT",
 ]

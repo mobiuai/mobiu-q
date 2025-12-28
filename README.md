@@ -1,4 +1,4 @@
-# Mobiu-Q v2.6
+# Mobiu-Q v2.7
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -7,11 +7,50 @@
 
 ---
 
-## 🚀 What's New in v2.6
+## 🚀 What's New in v2.7
 
-- **Comprehensive Validation**: 30+ problems tested across 7 domains
-- **Quantum Hardware**: Validated on IBM FakeFez realistic noise models
-- **Multi-Optimizer**: Adam, NAdam, AMSGrad, SGD, Momentum, LAMB
+- **MobiuOptimizer**: Universal wrapper - auto-detects PyTorch optimizers!
+- **Hybrid Mode**: Cloud intelligence + local PyTorch performance
+- **Zero Friction**: One-line integration for PyTorch users
+- **Full Backward Compatibility**: All existing code continues to work
+
+---
+
+## ⚡ Quick Start
+
+### PyTorch Users (NEW in v2.7!)
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+# Your existing code
+model = MyModel()
+base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+
+# Wrap with Mobiu-Q (one line!)
+opt = MobiuOptimizer(base_opt, method="adaptive")
+
+# Training loop stays the same
+for epoch in range(100):
+    loss = criterion(model(x), y)
+    loss.backward()
+    opt.step(loss.item())  # Pass loss for Soft Algebra
+    opt.zero_grad()
+
+opt.end()
+```
+
+### Quantum Users (unchanged)
+
+```python
+from mobiu_q import MobiuQCore
+
+opt = MobiuQCore(method="standard")
+for step in range(100):
+    params = opt.step(params, energy_fn)
+opt.end()
+```
 
 ---
 
@@ -83,36 +122,25 @@ pip install mobiu-q
 
 ---
 
-## ⚡ Quick Start
-
-```python
-# Simple - Auto gradient
-opt = MobiuQCore(method="standard")
-for step in range(100):
-    params = opt.step(params, energy_fn)
-opt.end()
-
-# Advanced - Manual gradient (backward compatible)
-opt = MobiuQCore(method="standard")
-for step in range(100):
-    grad = my_custom_gradient(params)
-    params = opt.step(params, grad, energy_fn(params))
-opt.end()
-```
-
----
-
 ## 🔧 Configuration
 
 📖 **See [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) for complete details**
 
+### Which Class to Use?
+
+| Use Case | Class | Mode |
+|----------|-------|------|
+| **PyTorch (RL, LLM, Deep Learning)** | `MobiuOptimizer` | Hybrid |
+| **Quantum (VQE, QAOA)** | `MobiuQCore` | Cloud |
+| **NumPy optimization** | `MobiuQCore` | Cloud |
+
 ### Methods
 
-| Method | Best For | LR |
-|--------|----------|-----|
+| Method | Best For | Default LR |
+|--------|----------|------------|
 | `standard` | VQE, Chemistry, Finance | 0.01 |
 | `deep` | QAOA, Noisy Hardware | 0.1 |
-| `adaptive` | RL, High-variance | 0.0003 |
+| `adaptive` | RL, LLM, High-variance | 0.0003 |
 
 ### Base Optimizers
 
@@ -130,19 +158,50 @@ opt.end()
 
 ---
 
+## 🆕 MobiuOptimizer (v2.7)
+
+The new `MobiuOptimizer` auto-detects your optimizer type:
+
+```python
+from mobiu_q import MobiuOptimizer
+
+# PyTorch optimizer → Hybrid mode (recommended for RL/LLM)
+base_opt = torch.optim.Adam(model.parameters())
+opt = MobiuOptimizer(base_opt, method="adaptive")
+
+# NumPy params → Cloud mode (same as MobiuQCore)
+params = np.random.randn(10)
+opt = MobiuOptimizer(params, method="standard")
+```
+
+### How Hybrid Mode Works
+
+```
+┌─────────────────┐     loss/return    ┌─────────────────┐
+│  Local PyTorch  │ ──────────────────▶│   Mobiu Cloud   │
+│                 │                    │                 │
+│  • Gradients    │   adaptive_lr      │  • Soft Algebra │
+│  • Weight Update│ ◀──────────────────│  • Super-Eq Δ†  │
+│  • Momentum     │                    │  • Trust Ratio  │
+└─────────────────┘                    └─────────────────┘
+```
+
+**Benefits:**
+- ✅ PyTorch handles precision & GPU acceleration
+- ✅ Cloud provides Soft Algebra intelligence
+- ✅ Minimal network overhead (only sends loss value)
+- ✅ No momentum state corruption
+
+---
+
 ## 🛠️ Troubleshooting
 
-If optimization is not improving or diverging, try these adjustments:
+If optimization is not improving or diverging:
 
 ### 1. Switch Base Optimizer
 
-Different optimizers work better for different problems:
-
 ```python
-# If Adam isn't working, try:
 opt = MobiuQCore(license_key="KEY", base_optimizer="NAdam")
-
-# Or try Momentum:
 opt = MobiuQCore(license_key="KEY", base_optimizer="Momentum")
 ```
 
@@ -154,17 +213,9 @@ opt = MobiuQCore(license_key="KEY", base_optimizer="Momentum")
 | `adaptive` | `deep` |
 | `deep` | `standard` |
 
-```python
-# If standard isn't working:
-opt = MobiuQCore(license_key="KEY", method="adaptive")
-```
-
-### 3. Switch Mode
-
-For quantum problems, if `simulation` mode isn't working:
+### 3. Switch Mode (Quantum)
 
 ```python
-# Try hardware mode (more aggressive noise filtering):
 opt = MobiuQCore(license_key="KEY", mode="hardware")
 ```
 
@@ -174,8 +225,6 @@ opt = MobiuQCore(license_key="KEY", mode="hardware")
 |----------|---------------|
 | Diverging | Lower LR by 2-5x |
 | No improvement | Increase LR by 2x |
-| QAOA | Use LR=0.1 |
-| RL | Use LR=0.0003 |
 
 ---
 
@@ -191,6 +240,8 @@ Evolution Law:
 ```
 S_{t+1} = (γ · S_t) · Δ_t + Δ_t
 ```
+
+The **Super-Equation Δ†** detects emergence moments for adaptive scaling.
 
 ---
 
