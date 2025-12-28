@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mobiu-q",
-    version="2.7.2",
+    version="2.7.3",
     author="Mobiu Technologies",
     author_email="contact@mobiu.ai",
     description="Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization",

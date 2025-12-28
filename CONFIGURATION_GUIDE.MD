@@ -2,7 +2,7 @@
 ## Verified Benchmark Results & Recommended Settings
 
 **Last Updated:** December 2024  
-**Version:** 2.7.2
+**Version:** 2.7.3
 
 ---
 
