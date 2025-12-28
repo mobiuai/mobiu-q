@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.7.0 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.7.1 - Universal MobiuOptimizer + Hybrid Mode
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -196,6 +196,7 @@ class MobiuOptimizer:
         optimizer_or_params,
         license_key: Optional[str] = None,
         method: str = "adaptive",
+        use_soft_algebra: bool = True,
         verbose: bool = True,
         # Legacy parameter
         problem: Optional[str] = None,
@@ -225,6 +226,7 @@ class MobiuOptimizer:
         self.method = METHOD_ALIASES.get(method, method)
         self._original_method = method
         self.verbose = verbose
+        self.use_soft_algebra = use_soft_algebra
         
         # Auto-detect: Is this a PyTorch optimizer?
         self._is_pytorch = (
@@ -239,6 +241,7 @@ class MobiuOptimizer:
                 optimizer_or_params, 
                 self.license_key, 
                 self.method,
+                use_soft_algebra=use_soft_algebra,
                 verbose=verbose
             )
         else:
@@ -371,10 +374,12 @@ class _MobiuPyTorchBackend:
     - Executes step locally (fast, precise)
     """
     
-    def __init__(self, optimizer, license_key: str, method: str, verbose: bool = True):
+    def __init__(self, optimizer, license_key: str, method: str, 
+                 use_soft_algebra: bool = True, verbose: bool = True):
         self.optimizer = optimizer
         self.license_key = license_key
         self.method = method
+        self.use_soft_algebra = use_soft_algebra
         self.verbose = verbose
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
@@ -402,7 +407,7 @@ class _MobiuPyTorchBackend:
                 'mode': 'simulation',
                 'base_lr': self.base_lr,
                 'base_optimizer': 'Adam',  # Doesn't matter - we use local
-                'use_soft_algebra': True
+                'use_soft_algebra': self.use_soft_algebra
             }, timeout=10)
             
             data = r.json()
@@ -417,6 +422,8 @@ class _MobiuPyTorchBackend:
                     tier = self._usage_info.get('tier', 'unknown')
                     
                     mode_str = f"method={self.method}, base_lr={self.base_lr}"
+                    if not self.use_soft_algebra:
+                        mode_str += ", SA=off"
                     
                     if remaining == 'unlimited':
                         print(f"🚀 Mobiu-Q Hybrid session started (Pro tier) [{mode_str}]")
@@ -1265,7 +1272,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.7.0"
+__version__ = "2.7.1"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

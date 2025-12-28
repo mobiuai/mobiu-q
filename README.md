@@ -1,4 +1,4 @@
-# Mobiu-Q v2.7
+# Mobiu-Q v2.7.1
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
