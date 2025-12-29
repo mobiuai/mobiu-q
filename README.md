@@ -1,4 +1,4 @@
-# Mobiu-Q v2.7.8
+# Mobiu-Q v2.7.9
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -13,17 +13,15 @@
 from mobiu_q import MobiuOptimizer
 
 # PyTorch (RL, LLM, Deep Learning)
-opt = MobiuOptimizer(torch_optimizer, method="adaptive")
+base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+opt = MobiuOptimizer(base_opt, license_key="YOUR_KEY", method="adaptive")
 
-# Quantum VQE (clean simulator)
-opt = MobiuOptimizer(params, method="standard", mode="simulation")
-
-# Quantum VQE (real/noisy hardware)
-opt = MobiuOptimizer(params, method="standard", mode="hardware")
-
-# QAOA (combinatorial optimization)
-opt = MobiuOptimizer(params, method="deep", mode="hardware")
+# Quantum (VQE, QAOA) - pass params instead of optimizer
+params = np.random.randn(10)
+opt = MobiuOptimizer(params, license_key="YOUR_KEY", method="standard", mode="simulation")
 ```
+
+> **Note:** `MobiuOptimizer` auto-detects PyTorch optimizers vs numpy arrays and uses the appropriate backend.
 
 ---
 
@@ -46,7 +44,7 @@ opt = MobiuOptimizer(params, method="deep", mode="hardware")
 
 **Rule of thumb:** If your backend has noise → use `hardware`. If it's a perfect simulator → use `simulation`.
 
-### Base Optimizers
+### Base Optimizers (MobiuQCore only)
 
 Available: `Adam` (default), `AdamW`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`
 
@@ -56,8 +54,8 @@ Available: `Adam` (default), `AdamW`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LA
 
 ```python
 # For fair comparisons, toggle Soft Algebra:
-opt = MobiuOptimizer(params, use_soft_algebra=True)   # Default - SA enabled
-opt = MobiuOptimizer(params, use_soft_algebra=False)  # Baseline - SA disabled
+opt = MobiuOptimizer(base_opt, use_soft_algebra=True)   # Default - SA enabled
+opt = MobiuOptimizer(base_opt, use_soft_algebra=False)  # Baseline - SA disabled
 ```
 
 ---
@@ -74,18 +72,30 @@ pip install mobiu-q
 
 ### PyTorch (RL / LLM / Deep Learning)
 
+Use `MobiuOptimizer` - wraps your PyTorch optimizer:
+
 ```python
 import torch
 from mobiu_q import MobiuOptimizer
 
+LICENSE_KEY = "your-license-key"
+
 model = MyModel()
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, method="adaptive")
+
+opt = MobiuOptimizer(
+    base_opt,                    # Your PyTorch optimizer
+    license_key=LICENSE_KEY,
+    method="adaptive",           # Best for RL/LLM
+    use_soft_algebra=True,       # Enable Soft Algebra (default)
+    sync_interval=50,            # Sync with cloud every N steps (default: 50)
+    verbose=True
+)
 
 for epoch in range(100):
     loss = criterion(model(x), y)
     loss.backward()
-    opt.step(loss.item())  # Pass loss for Soft Algebra
+    opt.step(loss.item())  # Pass loss value for Soft Algebra
     opt.zero_grad()
 
 opt.end()
@@ -97,8 +107,17 @@ opt.end()
 from mobiu_q import MobiuOptimizer
 import numpy as np
 
+LICENSE_KEY = "your-license-key"
+
 params = np.random.randn(10)
-opt = MobiuOptimizer(params, method="standard", mode="simulation")
+
+opt = MobiuOptimizer(
+    params,                      # Numpy array - auto-detects quantum mode
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="simulation",           # Clean simulator
+    use_soft_algebra=True
+)
 
 for step in range(100):
     params = opt.step(params, energy_fn)  # Auto-computes gradient
@@ -111,10 +130,15 @@ opt.end()
 ```python
 from mobiu_q import MobiuOptimizer
 
-opt = MobiuOptimizer(params, method="standard", mode="hardware")
+opt = MobiuOptimizer(
+    params,
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="hardware",             # Noisy hardware - uses SPSA
+)
 
 for step in range(100):
-    params = opt.step(params, energy_fn)  # Uses SPSA gradient
+    params = opt.step(params, energy_fn)
 
 opt.end()
 ```
@@ -124,12 +148,50 @@ opt.end()
 ```python
 from mobiu_q import MobiuOptimizer
 
-opt = MobiuOptimizer(params, method="deep", mode="hardware")
+opt = MobiuOptimizer(
+    params,
+    license_key=LICENSE_KEY,
+    method="deep",               # Best for rugged landscapes
+    mode="hardware",
+)
 
 for step in range(150):
     params = opt.step(params, maxcut_cost_fn)
 
 opt.end()
+```
+
+### Manual Gradient (Quantum)
+
+```python
+from mobiu_q import MobiuOptimizer, Demeasurement
+
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
+
+for step in range(100):
+    energy = energy_fn(params)
+    gradient = Demeasurement.finite_difference(energy_fn, params)
+    params = opt.step(params, gradient, energy)
+
+opt.end()
+```
+
+---
+
+## 🔑 License Key
+
+Get your key at [app.mobiu.ai](https://app.mobiu.ai)
+
+```python
+# Option 1: Pass directly
+opt = MobiuOptimizer(base_opt, license_key="your-key")
+
+# Option 2: Environment variable
+export MOBIU_Q_LICENSE_KEY="your-key"
+
+# Option 3: Save to file (one time)
+from mobiu_q import save_license_key
+save_license_key("your-key")
 ```
 
 ---
@@ -141,14 +203,16 @@ All benchmarks use fair A/B testing: **Soft Algebra ON vs OFF**, same seeds, sam
 ### 🧪 Fair Testing Methodology
 
 ```python
-# How we test - you can reproduce this yourself:
-opt_baseline = MobiuOptimizer(params, use_soft_algebra=False)  # SA OFF
-opt_mobiu = MobiuOptimizer(params, use_soft_algebra=True)      # SA ON
+# PyTorch A/B test:
+opt_baseline = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=False)
+opt_mobiu = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=True)
+
+# Quantum A/B test:
+opt_baseline = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=False)
+opt_mobiu = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=True)
 
 # Same seed, same problem, same everything - only SA differs
 ```
-
-This ensures improvements come from Soft Algebra, not different hyperparameters.
 
 ### ⚛️ Quantum VQE on IBM FakeFez
 
@@ -185,14 +249,60 @@ This ensures improvements come from Soft Algebra, not different hyperparameters.
 
 ### Not Improving?
 
-1. **Switch optimizer**: Try `NAdam` or `Momentum`
+1. **Switch optimizer**: Try `NAdam` or `Momentum` (Quantum mode)
 2. **Switch method**: `standard` ↔ `adaptive` ↔ `deep`
 3. **Adjust LR**: Diverging → lower by 2-5x, stuck → raise by 2x
+4. **Reduce sync_interval**: Try `sync_interval=1` for more frequent updates (PyTorch)
 
 ### Quantum Specific
 
 - **Noisy results?** Use `mode="hardware"` (enables SPSA)
 - **Clean simulator?** Use `mode="simulation"` (uses finite difference)
+
+### PyTorch Specific
+
+- **High latency?** Increase `sync_interval` (default: 50)
+- **Not learning?** Decrease `sync_interval` to 1
+
+---
+
+## 📖 API Reference
+
+### MobiuOptimizer (Universal)
+
+```python
+MobiuOptimizer(
+    optimizer_or_params,          # torch.optim.Optimizer OR np.ndarray
+    license_key: str,
+    method: str = "adaptive",     # "standard", "deep", "adaptive"
+    mode: str = "simulation",     # "simulation", "hardware"
+    use_soft_algebra: bool = True,
+    sync_interval: int = 50,      # Cloud sync frequency (PyTorch only)
+    verbose: bool = True
+)
+```
+
+**Auto-detection:**
+- If `optimizer_or_params` has `.step()`, `.param_groups`, `.zero_grad()` → PyTorch mode
+- Otherwise → Quantum mode (delegates to MobiuQCore)
+
+### MobiuQCore (Quantum - Low-level)
+
+For advanced quantum use cases:
+
+```python
+from mobiu_q import MobiuQCore
+
+MobiuQCore(
+    license_key: str,
+    method: str = "standard",
+    mode: str = "simulation",
+    base_optimizer: str = "Adam", # Optimizer name (string!)
+    base_lr: float = None,        # Auto-computed if None
+    use_soft_algebra: bool = True,
+    verbose: bool = True
+)
+```
 
 ---
 
