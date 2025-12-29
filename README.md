@@ -1,4 +1,4 @@
-# Mobiu-Q v2.7.6
+# Mobiu-Q v2.7.7
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -51,6 +51,14 @@ opt = MobiuOptimizer(params, method="deep", mode="hardware")
 Available: `Adam` (default), `AdamW`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`
 
 > **Note:** Optimizer names are case-sensitive!
+
+### A/B Testing Parameter
+
+```python
+# For fair comparisons, toggle Soft Algebra:
+opt = MobiuOptimizer(params, use_soft_algebra=True)   # Default - SA enabled
+opt = MobiuOptimizer(params, use_soft_algebra=False)  # Baseline - SA disabled
+```
 
 ---
 
@@ -129,6 +137,18 @@ opt.end()
 ## 🏆 Verified Benchmark Results
 
 All benchmarks use fair A/B testing: **Soft Algebra ON vs OFF**, same seeds, same conditions.
+
+### 🧪 Fair Testing Methodology
+
+```python
+# How we test - you can reproduce this yourself:
+opt_baseline = MobiuOptimizer(params, use_soft_algebra=False)  # SA OFF
+opt_mobiu = MobiuOptimizer(params, use_soft_algebra=True)      # SA ON
+
+# Same seed, same problem, same everything - only SA differs
+```
+
+This ensures improvements come from Soft Algebra, not different hyperparameters.
 
 ### ⚛️ Quantum VQE on IBM FakeFez
 
