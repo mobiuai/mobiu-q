@@ -64,7 +64,7 @@ from mobiu_q import MobiuQCore
 # CONFIGURATION
 # ============================================================
 
-LICENSE_KEY = "e756ce65-186e-4747-aaaf-5a1fb1473b7e"
+LICENSE_KEY = "YOUR_LICENCE"
 
 METHODS = ['standard', 'deep', 'adaptive']
 OPTIMIZERS = ['Adam', 'SGD', 'NAdam']

@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.7.5 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.7.6 - Universal MobiuOptimizer + Hybrid Mode
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -1330,7 +1330,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.7.5"
+__version__ = "2.7.6"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
