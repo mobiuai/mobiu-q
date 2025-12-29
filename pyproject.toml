@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "2.7.9"
+version = "2.8.0"
 description = "Soft Algebra Optimizer for Quantum & Complex Optimization"
 readme = "README.md"
 license = {text = "Proprietary"}
