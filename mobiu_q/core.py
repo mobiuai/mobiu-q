@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.8.4 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.8.5 - Universal MobiuOptimizer + Hybrid Mode
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -538,14 +538,6 @@ class _MobiuPyTorchBackend:
                 if data.get('success') and 'adaptive_lr' in data:
                     new_lr = data['adaptive_lr']
                     self.lr_history.append(new_lr)
-
-                    # Get old LR BEFORE updating
-                    old_lr = self.optimizer.param_groups[0]['lr']
-
-                    # CRITICAL FIX: Reset momentum BEFORE updating LR
-                    if abs(new_lr - old_lr) / (old_lr + 1e-8) > 0.1:  # >10% change
-                        if hasattr(self.optimizer, 'state'):
-                            self.optimizer.state.clear()
 
                     # Update local optimizer's LR
                     for param_group in self.optimizer.param_groups:
@@ -1339,7 +1331,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.8.4"
+__version__ = "2.8.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
