@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.7.4 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.7.5 - Universal MobiuOptimizer + Hybrid Mode
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -156,6 +156,7 @@ class MobiuOptimizer:
             - np.ndarray or list: Initial parameters (quantum mode, uses MobiuQCore)
         license_key: Your Mobiu-Q license key
         method: "standard", "deep", or "adaptive" (legacy: "vqe", "qaoa", "rl")
+        mode: "simulation" (clean, uses finite difference) or "hardware" (noisy, uses SPSA)
         verbose: Print status messages
         **kwargs: Additional arguments passed to MobiuQCore (quantum mode only)
     
@@ -201,10 +202,10 @@ class MobiuOptimizer:
         optimizer_or_params,
         license_key: Optional[str] = None,
         method: str = "adaptive",
+        mode: str = "simulation",  # להוסיף!
         use_soft_algebra: bool = True,
-        sync_interval: Optional[int] = None,  # NEW
+        sync_interval: Optional[int] = None,
         verbose: bool = True,
-        # Legacy parameter
         problem: Optional[str] = None,
         **kwargs
     ):
@@ -260,6 +261,7 @@ class MobiuOptimizer:
             self._backend = MobiuQCore(
                 license_key=self.license_key,
                 method=method,
+                mode=mode,
                 verbose=verbose,
                 **kwargs
             )
@@ -1328,7 +1330,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.7.4"
+__version__ = "2.7.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

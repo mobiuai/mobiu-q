@@ -143,8 +143,8 @@ def run_optimizer(name, use_soft_algebra, seed, spsa_deltas):
     r = requests.post(API_URL, json={
         'action': 'start',
         'license_key': LICENSE_KEY,
-        'method': 'qaoa',          # NOT 'problem'
-        'mode': 'hardware',        # NOT 'noisy'
+        'method': 'deep',          
+        'mode': 'hardware',        
         'use_soft_algebra': use_soft_algebra,
         'base_lr': 0.1             # QAOA default
     }, timeout=10)
