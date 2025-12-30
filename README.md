@@ -1,4 +1,4 @@
-# Mobiu-Q v2.8.5
+# Mobiu-Q v2.8.6
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -214,6 +214,27 @@ opt_mobiu = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=True)
 # Same seed, same problem, same everything - only SA differs
 ```
 
+### 🎮 Reinforcement Learning
+
+| Environment | Improvement | Win Rate | p-value | Cohen's d |
+|-------------|-------------|----------|---------|-----------|
+| **LunarLander-v3** | **+146.9%** | 93.3% | < 0.000001 | +1.50 |
+| **Atari Breakout** | **+54.2%** | 100% | - | - |
+
+*LunarLander: 30 seeds, 1000 episodes each. Atari: 3 seeds, 200 episodes each.*
+
+### 💰 Portfolio Optimization
+
+| Noise Level | Improvement | Win Rate | p-value | Cohen's d |
+|-------------|-------------|----------|---------|-----------|
+| **1%** | **+16.8%** | 100% | < 0.000001 | +0.94 |
+| **10%** | **+13.7%** | 100% | < 0.000001 | +0.99 |
+| **50%** | **+12.8%** | 100% | < 0.000001 | +0.98 |
+
+*100 seeds per noise level. Sharpe ratio optimization on AAPL, GOOGL, MSFT, AMZN, TSLA.*
+
+**Overall: 300/300 wins (100%), average improvement +14.5%**
+
 ### ⚛️ Quantum VQE on IBM FakeFez
 
 | Molecule | Qubits | Improvement | Win Rate |
@@ -228,20 +249,11 @@ opt_mobiu = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=True)
 |---------|-------------|---------|
 | **MaxCut** | **+45.1%** | 0.0003 |
 
-### 🎮 Reinforcement Learning
-
-| Environment | Improvement | Win Rate |
-|-------------|-------------|----------|
-| **LunarLander-v3** | **+127.8%** | 96.7% |
-| **MuJoCo InvertedPendulum** | **+111%** | 100% |
-| **MuJoCo Hopper** | **+41%** | 80% |
-
-### 💰 Finance
+### 💳 Finance (Other)
 
 | Problem | Improvement |
 |---------|-------------|
 | **Credit Risk** | **+52.3%** |
-| **Portfolio Optimization** | **+51.7%** |
 
 ---
 

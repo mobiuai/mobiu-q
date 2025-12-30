@@ -4,7 +4,7 @@ Mobiu-Q — Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization
 A next-generation optimizer built on Soft Algebra and Demeasurement theory,
 enabling stable and efficient optimization in noisy, stochastic environments.
 
-Version: 2.8.5 - MobiuOptimizer + Hybrid Mode for PyTorch
+Version: 2.8.6 - MobiuOptimizer + Hybrid Mode for PyTorch
 
 Classes:
     | Class          | Use Case                                   |
