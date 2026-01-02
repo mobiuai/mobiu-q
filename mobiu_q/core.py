@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.9.1 - The "Frustration Engine" Update
+Version: 2.9.2 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -803,9 +803,9 @@ class MobiuQCore:
         base_lr: Optional[float] = None,
         base_optimizer: str = DEFAULT_OPTIMIZER,
         use_soft_algebra: bool = True,
+        maximize: bool = False,  # NEW
         offline_fallback: bool = True,
         verbose: bool = True,
-        # Deprecated parameters (backward compatibility)
         problem: Optional[str] = None,
     ):
         self.license_key = license_key or get_license_key()
@@ -858,6 +858,11 @@ class MobiuQCore:
         self.verbose = verbose
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
+
+        # Frustration Engine (NEW)
+        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
+        self._current_lr = self.base_lr
+        self.maximize = maximize
         
         # Local state (for offline fallback)
         self._offline_mode = False
@@ -936,6 +941,9 @@ class MobiuQCore:
                     mode_str += f", optimizer={server_optimizer}"
                 if not self.use_soft_algebra:
                     mode_str += ", SA=off"
+
+                if self.maximize:
+                    mode_str += ", maximize=True"
                 
                 if remaining == 'unlimited':
                     print(f"🚀 Mobiu-Q session started (Pro tier) [{mode_str}]")
@@ -1057,12 +1065,24 @@ class MobiuQCore:
                 raise ValueError("energy is required when providing gradient array")
     
         self.energy_history.append(energy)
+
+        # === FRUSTRATION ENGINE ===
+        if self.frustration_engine:
+            score = energy if self.maximize else -energy
+            factor = self.frustration_engine.get_lr_factor(score)
+    
+            if factor > 1.0:
+                self._current_lr = self.base_lr * factor
+                self.lr_history.append(self._current_lr)
+            else:
+                self._current_lr = self.base_lr
         
         if self._offline_mode:
             return self._offline_step(params, gradient)
         
         try:
             # Retry loop for rate limiting
+            energy_to_send = -energy if self.maximize else energy
             for attempt in range(3):
                 response = requests.post(
                     self.api_endpoint,
@@ -1072,7 +1092,7 @@ class MobiuQCore:
                         "action": "step",
                         "params": params.tolist(),
                         "gradient": gradient.tolist(),
-                        "energy": float(energy)
+                        "energy": float(energy_to_send)
                     },
                     timeout=30
                 )
@@ -1120,7 +1140,7 @@ class MobiuQCore:
             self._local_m = np.zeros_like(gradient)
             self._local_v = np.zeros_like(gradient)
         
-        lr = self.base_lr
+        lr = self._current_lr
         beta1, beta2, eps = 0.9, 0.999, 1e-8
         
         self._local_m = beta1 * self._local_m + (1 - beta1) * gradient
@@ -1388,7 +1408,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.9.1"
+__version__ = "2.9.2"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
