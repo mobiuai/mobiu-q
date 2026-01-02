@@ -4,13 +4,14 @@ Mobiu-Q — Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization
 A next-generation optimizer built on Soft Algebra and Demeasurement theory,
 enabling stable and efficient optimization in noisy, stochastic environments.
 
-Version: 2.8.6 - MobiuOptimizer + Hybrid Mode for PyTorch
+Version: 2.9.0 - The "Frustration Engine" Update
 
 Classes:
-    | Class          | Use Case                                   |
-    |----------------|---------------------------------------------|
-    | MobiuOptimizer | PyTorch (RL, LLM, Deep Learning)           |
-    | MobiuQCore     | Quantum (VQE, QAOA) & NumPy optimization   |
+    | Class                      | Use Case                                   |
+    |----------------------------|---------------------------------------------|
+    | MobiuOptimizer             | PyTorch (RL, LLM, Deep Learning)           |
+    | MobiuQCore                 | Quantum (VQE, QAOA) & NumPy optimization   |
+    | UniversalFrustrationEngine | Stagnation detection & LR boosting         |
 
 Methods:
     | Method   | Legacy | Use Case                                    |
@@ -35,6 +36,20 @@ Quick Start (PyTorch):
     
     opt.end()
 
+Quick Start (RL with Frustration Engine):
+    from mobiu_q import MobiuOptimizer
+    
+    base_opt = torch.optim.Adam(policy.parameters(), lr=0.0003)
+    opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+    
+    for episode in range(1000):
+        reward = run_episode(policy)
+        loss.backward()
+        opt.step(reward)  # Frustration Engine auto-detects stagnation
+        opt.zero_grad()
+    
+    opt.end()
+
 Quick Start (Quantum VQE):
     from mobiu_q import MobiuQCore
     
@@ -50,12 +65,14 @@ License:
     Pro tier: Unlimited - https://app.mobiu.ai
 """
 
-__version__ = "2.8.5"
+__version__ = "2.9.0"
 __author__ = "Mobiu Technologies"
 
 from .core import (
     # Universal wrapper for PyTorch
     MobiuOptimizer,
+    # Frustration Engine (v2.9)
+    UniversalFrustrationEngine,
     # Quantum/NumPy optimizer
     MobiuQCore, 
     # Gradient estimation
@@ -77,6 +94,7 @@ from .core import (
 __all__ = [
     # Optimizers
     "MobiuOptimizer",
+    "UniversalFrustrationEngine",
     "MobiuQCore",
     "Demeasurement",
     # Utilities

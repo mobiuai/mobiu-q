@@ -1,9 +1,23 @@
-# Mobiu-Q v2.8.6
+# Mobiu-Q v2.9.0
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
 
-**Mobiu-Q** wraps your existing optimizer with **Soft Algebra** to filter noise and improve convergence. Same API, better results.
+**Mobiu-Q** wraps your existing optimizer with **Soft Algebra** and the new **Frustration Engine** to filter noise, detect stagnation, and improve convergence. Same API, better results.
+
+---
+
+## 🆕 What's New in v2.9.0
+
+**Frustration Engine** - Client-side adaptive mechanism that:
+- Detects when optimization is stuck
+- Automatically boosts learning rate 3x
+- Achieves **+60% improvement** over base Soft Algebra on LunarLander
+
+```python
+# Frustration Engine activates automatically!
+opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+```
 
 ---
 
@@ -15,6 +29,9 @@ from mobiu_q import MobiuOptimizer
 # PyTorch (RL, LLM, Deep Learning)
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
 opt = MobiuOptimizer(base_opt, license_key="YOUR_KEY", method="adaptive")
+
+# RL with Frustration Engine (maximize=True for rewards)
+opt = MobiuOptimizer(base_opt, license_key="YOUR_KEY", method="adaptive", maximize=True)
 
 # Quantum (VQE, QAOA) - pass params instead of optimizer
 params = np.random.randn(10)
@@ -44,17 +61,21 @@ opt = MobiuOptimizer(params, license_key="YOUR_KEY", method="standard", mode="si
 
 **Rule of thumb:** If your backend has noise → use `hardware`. If it's a perfect simulator → use `simulation`.
 
-### Base Optimizers (MobiuQCore only)
+### New: maximize Parameter (v2.9.0)
 
-Available: `Adam` (default), `AdamW`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`
+```python
+# For Loss minimization (default)
+opt = MobiuOptimizer(base_opt, maximize=False)
 
-> **Note:** Optimizer names are case-sensitive!
+# For Reward maximization (RL)
+opt = MobiuOptimizer(base_opt, maximize=True)
+```
 
 ### A/B Testing Parameter
 
 ```python
 # For fair comparisons, toggle Soft Algebra:
-opt = MobiuOptimizer(base_opt, use_soft_algebra=True)   # Default - SA enabled
+opt = MobiuOptimizer(base_opt, use_soft_algebra=True)   # Default - SA + Frustration Engine
 opt = MobiuOptimizer(base_opt, use_soft_algebra=False)  # Baseline - SA disabled
 ```
 
@@ -70,9 +91,7 @@ pip install mobiu-q
 
 ## 🎯 Usage Examples
 
-### PyTorch (RL / LLM / Deep Learning)
-
-Use `MobiuOptimizer` - wraps your PyTorch optimizer:
+### PyTorch (RL with Frustration Engine)
 
 ```python
 import torch
@@ -80,22 +99,43 @@ from mobiu_q import MobiuOptimizer
 
 LICENSE_KEY = "your-license-key"
 
-model = MyModel()
-base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+policy = PolicyNetwork()
+base_opt = torch.optim.Adam(policy.parameters(), lr=0.0003)
 
 opt = MobiuOptimizer(
-    base_opt,                    # Your PyTorch optimizer
+    base_opt,
     license_key=LICENSE_KEY,
-    method="adaptive",           # Best for RL/LLM
-    use_soft_algebra=True,       # Enable Soft Algebra (default)
-    sync_interval=50,            # Sync with cloud every N steps (default: 50)
+    method="adaptive",
+    maximize=True,           # NEW: For RL rewards
+    use_soft_algebra=True,   # Enables Frustration Engine
     verbose=True
+)
+
+for episode in range(1000):
+    reward = run_episode(policy)
+    loss = compute_policy_loss(...)
+    loss.backward()
+    opt.step(reward)  # Frustration Engine auto-detects stagnation
+    opt.zero_grad()
+
+opt.end()
+```
+
+### PyTorch (Loss Minimization)
+
+```python
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    maximize=False,          # Default: minimize loss
+    sync_interval=50,
 )
 
 for epoch in range(100):
     loss = criterion(model(x), y)
     loss.backward()
-    opt.step(loss.item())  # Pass loss value for Soft Algebra
+    opt.step(loss.item())
     opt.zero_grad()
 
 opt.end()
@@ -107,34 +147,13 @@ opt.end()
 from mobiu_q import MobiuOptimizer
 import numpy as np
 
-LICENSE_KEY = "your-license-key"
-
 params = np.random.randn(10)
-
-opt = MobiuOptimizer(
-    params,                      # Numpy array - auto-detects quantum mode
-    license_key=LICENSE_KEY,
-    method="standard",
-    mode="simulation",           # Clean simulator
-    use_soft_algebra=True
-)
-
-for step in range(100):
-    params = opt.step(params, energy_fn)  # Auto-computes gradient
-
-opt.end()
-```
-
-### Quantum VQE (Real Hardware / FakeFez)
-
-```python
-from mobiu_q import MobiuOptimizer
 
 opt = MobiuOptimizer(
     params,
     license_key=LICENSE_KEY,
     method="standard",
-    mode="hardware",             # Noisy hardware - uses SPSA
+    mode="simulation",
 )
 
 for step in range(100):
@@ -143,37 +162,19 @@ for step in range(100):
 opt.end()
 ```
 
-### QAOA (Combinatorial Optimization)
+### Standalone Frustration Engine
 
 ```python
-from mobiu_q import MobiuOptimizer
+from mobiu_q import UniversalFrustrationEngine
 
-opt = MobiuOptimizer(
-    params,
-    license_key=LICENSE_KEY,
-    method="deep",               # Best for rugged landscapes
-    mode="hardware",
-)
+engine = UniversalFrustrationEngine(base_lr=0.001)
 
-for step in range(150):
-    params = opt.step(params, maxcut_cost_fn)
-
-opt.end()
-```
-
-### Manual Gradient (Quantum)
-
-```python
-from mobiu_q import MobiuOptimizer, Demeasurement
-
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
-
-for step in range(100):
-    energy = energy_fn(params)
-    gradient = Demeasurement.finite_difference(energy_fn, params)
-    params = opt.step(params, gradient, energy)
-
-opt.end()
+for step in range(1000):
+    metric = evaluate()
+    factor = engine.get_lr_factor(metric)
+    current_lr = base_lr * factor  # 1.0x, 2.0x, or 3.0x
+    
+    # Use current_lr in your optimizer
 ```
 
 ---
@@ -200,19 +201,18 @@ save_license_key("your-key")
 
 All benchmarks use fair A/B testing: **Soft Algebra ON vs OFF**, same seeds, same conditions.
 
-### 🧪 Fair Testing Methodology
+### 🆕 Frustration Engine Results (v2.9.0)
 
-```python
-# PyTorch A/B test:
-opt_baseline = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=False)
-opt_mobiu = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=True)
+| Configuration | LunarLander Score | vs Vanilla |
+|---------------|-------------------|------------|
+| Vanilla Adam | -98.3 | - |
+| Soft Algebra Only | -70.9 | +27.9% |
+| **SA + Frustration Engine** | **-27.6** | **+71.9%** |
 
-# Quantum A/B test:
-opt_baseline = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=False)
-opt_mobiu = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=True)
+**Frustration Engine adds +60% improvement on top of Soft Algebra!**
 
-# Same seed, same problem, same everything - only SA differs
-```
+- Win rate: 5/5 seeds (100%)
+- p-value: 0.03125
 
 ### 🎮 Reinforcement Learning
 
@@ -249,32 +249,23 @@ opt_mobiu = MobiuOptimizer(params, license_key=KEY, use_soft_algebra=True)
 |---------|-------------|---------|
 | **MaxCut** | **+45.1%** | 0.0003 |
 
-### 💳 Finance (Other)
-
-| Problem | Improvement |
-|---------|-------------|
-| **Credit Risk** | **+52.3%** |
-
 ---
 
 ## 🛠️ Troubleshooting
 
 ### Not Improving?
 
-1. **Switch optimizer**: Try `NAdam` or `Momentum` (Quantum mode)
-2. **Switch method**: `standard` ↔ `adaptive` ↔ `deep`
-3. **Adjust LR**: Diverging → lower by 2-5x, stuck → raise by 2x
-4. **Reduce sync_interval**: Try `sync_interval=1` for more frequent updates (PyTorch)
+1. **Try maximize=True**: For RL rewards, set `maximize=True`
+2. **Switch optimizer**: Try `NAdam` or `Momentum` (Quantum mode)
+3. **Switch method**: `standard` ↔ `adaptive` ↔ `deep`
+4. **Adjust LR**: Diverging → lower by 2-5x, stuck → raise by 2x
+5. **Reduce sync_interval**: Try `sync_interval=1` for more frequent updates
 
-### Quantum Specific
+### Frustration Engine Not Triggering?
 
-- **Noisy results?** Use `mode="hardware"` (enables SPSA)
-- **Clean simulator?** Use `mode="simulation"` (uses finite difference)
-
-### PyTorch Specific
-
-- **High latency?** Increase `sync_interval` (default: 50)
-- **Not learning?** Decrease `sync_interval` to 1
+- Check if `use_soft_algebra=True` (default)
+- Engine needs 20+ steps to detect stagnation
+- Verify `maximize` parameter matches your metric
 
 ---
 
@@ -290,37 +281,29 @@ MobiuOptimizer(
     mode: str = "simulation",     # "simulation", "hardware"
     use_soft_algebra: bool = True,
     sync_interval: int = 50,      # Cloud sync frequency (PyTorch only)
+    maximize: bool = False,       # NEW: True for RL rewards
     verbose: bool = True
 )
 ```
 
-**Auto-detection:**
-- If `optimizer_or_params` has `.step()`, `.param_groups`, `.zero_grad()` → PyTorch mode
-- Otherwise → Quantum mode (delegates to MobiuQCore)
-
-### MobiuQCore (Quantum - Low-level)
-
-For advanced quantum use cases:
+### UniversalFrustrationEngine (NEW in v2.9.0)
 
 ```python
-from mobiu_q import MobiuQCore
-
-MobiuQCore(
-    license_key: str,
-    method: str = "standard",
-    mode: str = "simulation",
-    base_optimizer: str = "Adam", # Optimizer name (string!)
-    base_lr: float = None,        # Auto-computed if None
-    use_soft_algebra: bool = True,
-    verbose: bool = True
+UniversalFrustrationEngine(
+    base_lr: float,               # Base learning rate
+    sensitivity: float = 0.05    # Stagnation sensitivity
 )
+
+# Methods:
+engine.get_lr_factor(metric)     # Returns 1.0, 2.0, or 3.0
+engine.reset()                   # Reset for new run
 ```
 
 ---
 
 ## 🔬 How It Works
 
-Mobiu-Q is based on **Soft Algebra** from Klein/Maimon theory:
+### Soft Algebra (Klein/Maimon Theory)
 
 ```
 SoftNumber multiplication (ε²=0):
@@ -328,6 +311,26 @@ SoftNumber multiplication (ε²=0):
 ```
 
 The **Super-Equation Δ†** detects emergence moments for adaptive scaling.
+
+### Frustration Engine (v2.9.0)
+
+```
+┌─────────────────────┐
+│   Performance       │
+│   History (50 steps)│
+└─────────┬───────────┘
+          │
+          ▼
+┌─────────────────────┐     Stagnation     ┌─────────────────────┐
+│   Stagnation        │ ──── Detected ────▶│   LR Boost (3x)     │
+│   Detection         │                    │   for 30 steps      │
+└─────────────────────┘                    └─────────────────────┘
+          │
+          ▼ Normal
+┌─────────────────────┐
+│   LR Factor = 1.0   │
+└─────────────────────┘
+```
 
 ---
 
@@ -356,4 +359,4 @@ Based on **Soft Numbers** theory developed by **Dr. Moshe Klein** and **Prof. Od
 
 ---
 
-© 2025 Mobiu Technologies. All rights reserved.
+© 2025-2026 Mobiu Technologies. All rights reserved.

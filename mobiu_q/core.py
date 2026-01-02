@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.8.6 - Universal MobiuOptimizer + Hybrid Mode
+Version: 2.9.0 - The "Frustration Engine" Update
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -55,6 +55,7 @@ import os
 import json
 import warnings
 import time
+from collections import deque
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -137,6 +138,61 @@ def get_default_lr(method: str, mode: str) -> float:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
+# UNIVERSAL FRUSTRATION ENGINE (CLIENT-SIDE)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class UniversalFrustrationEngine:
+    """
+    Logic Injection Engine that detects stagnation and boosts Learning Rate.
+    Works entirely client-side for zero latency.
+    """
+    def __init__(self, base_lr: float, sensitivity: float = 0.05):
+        self.base_lr = base_lr
+        self.history = deque(maxlen=50)
+        self.cooldown = 0
+        self.best_metric = -float('inf')
+        self.stagnation_counter = 0
+        self.sensitivity = sensitivity 
+
+    def get_lr_factor(self, current_metric: float) -> float:
+        """
+        Returns a multiplier factor (e.g. 1.0, 2.0, 3.0) for the LR.
+        Assumes 'current_metric' is something we want to MAXIMIZE.
+        """
+        self.history.append(current_metric)
+        
+        if current_metric > self.best_metric:
+            self.best_metric = current_metric
+            self.stagnation_counter = 0
+        else:
+            self.stagnation_counter += 1
+
+        if self.cooldown > 0:
+            self.cooldown -= 1
+            decay = 0.95 ** (30 - self.cooldown)
+            return 1.0 + (2.0 * decay)
+
+        if len(self.history) >= 20:
+            recent_avg = np.mean(list(self.history)[-10:])
+            old_avg = np.mean(list(self.history)[:10])
+            is_stuck = (recent_avg < old_avg + abs(old_avg) * self.sensitivity)
+            
+            if is_stuck and self.stagnation_counter > 20:
+                self.cooldown = 30
+                self.history.clear()
+                self.stagnation_counter = 0
+                return 3.0
+
+        return 1.0
+    
+    def reset(self):
+        """Reset engine state for new run."""
+        self.history.clear()
+        self.cooldown = 0
+        self.best_metric = -float('inf')
+        self.stagnation_counter = 0
+
+# ═══════════════════════════════════════════════════════════════════════════════
 # MOBIU OPTIMIZER - UNIVERSAL WRAPPER (NEW in v2.7!)
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -205,6 +261,7 @@ class MobiuOptimizer:
         mode: str = "simulation",  # להוסיף!
         use_soft_algebra: bool = True,
         sync_interval: Optional[int] = None,
+        maximize: bool = False,
         verbose: bool = True,
         problem: Optional[str] = None,
         **kwargs
@@ -253,7 +310,8 @@ class MobiuOptimizer:
                 self.license_key, 
                 self.method,
                 use_soft_algebra=use_soft_algebra,
-                sync_interval=sync_interval,  # NEW
+                sync_interval=sync_interval,
+                maximize=maximize,
                 verbose=verbose
             )
         else:
@@ -403,7 +461,7 @@ class _MobiuPyTorchBackend:
     
     def __init__(self, optimizer, license_key: str, method: str, 
                 use_soft_algebra: bool = True, sync_interval: int = 50,
-                verbose: bool = True):
+                maximize: bool = False, verbose: bool = True):
         self.optimizer = optimizer
         self.license_key = license_key
         self.method = method
@@ -414,6 +472,10 @@ class _MobiuPyTorchBackend:
         
         # Get base LR from optimizer
         self.base_lr = optimizer.param_groups[0]['lr']
+        
+        # Frustration Engine
+        self.maximize = maximize
+        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
         
         # Tracking
         self.energy_history = []
@@ -485,17 +547,28 @@ class _MobiuPyTorchBackend:
         """
         Perform hybrid optimization step with sync_interval.
     
-        1. Accumulate energy locally
-        2. Every sync_interval steps: send avg to cloud, get adaptive_lr
-        3. Update local optimizer's LR
-        4. Execute local PyTorch step (always)
+        1. Apply Frustration Engine (client-side, instant)
+        2. Accumulate energy locally
+        3. Every sync_interval steps: send avg to cloud, get adaptive_lr
+        4. Update local optimizer's LR
+        5. Execute local PyTorch step (always)
     
         Args:
             energy: Loss value or episode return. If None, uses last value.
         """
         self._local_step_count += 1
+        
+        # 1. FRUSTRATION ENGINE (Client-Side, Zero Latency)
+        if self.frustration_engine and energy is not None:
+            score = energy if self.maximize else -energy
+            factor = self.frustration_engine.get_lr_factor(score)
+            
+            if factor > 1.0:
+                new_lr = self.base_lr * factor
+                for pg in self.optimizer.param_groups:
+                    pg['lr'] = new_lr
     
-        # Accumulate energy
+        # 2. Accumulate energy
         if energy is not None:
             self._last_energy = float(energy)
             self.energy_history.append(self._last_energy)
@@ -564,10 +637,14 @@ class _MobiuPyTorchBackend:
         self.lr_history.clear()
         self._last_energy = None
     
-        # NEW: Reset sync counters
+        # Reset sync counters
         self._local_step_count = 0
         self._accumulated_loss = 0.0
         self._loss_count = 0
+        
+        # Reset Frustration Engine
+        if self.frustration_engine:
+            self.frustration_engine.reset()
     
         # Reset optimizer state (momentum, etc.)
         self.optimizer.state.clear()
@@ -1331,10 +1408,12 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.8.6"
+__version__ = "2.9.0"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
+    # Frustration Engine (v2.9)
+    "UniversalFrustrationEngine",
     # Legacy (still fully supported)
     "MobiuQCore",
     "Demeasurement",

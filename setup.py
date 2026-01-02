@@ -5,10 +5,10 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mobiu-q",
-    version="2.8.6",
+    version="2.9.0",
     author="Mobiu Technologies",
     author_email="contact@mobiu.ai",
-    description="Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization",
+    description="Soft Algebra Optimizer with Frustration Engine for Quantum, RL, LLM & Complex Optimization",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://mobiu.ai",
@@ -56,5 +56,7 @@ setup(
         "fine-tuning",
         "soft algebra",
         "noise robust",
+        "frustration engine",
+        "adaptive learning rate",
     ],
 )
