@@ -4,7 +4,7 @@ Mobiu-Q — Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization
 A next-generation optimizer built on Soft Algebra and Demeasurement theory,
 enabling stable and efficient optimization in noisy, stochastic environments.
 
-Version: 2.9.0 - The "Frustration Engine" Update
+Version: 2.9.1 - The "Frustration Engine" Update
 
 Classes:
     | Class                      | Use Case                                   |
@@ -65,7 +65,7 @@ License:
     Pro tier: Unlimited - https://app.mobiu.ai
 """
 
-__version__ = "2.9.0"
+__version__ = "2.9.1"
 __author__ = "Mobiu Technologies"
 
 from .core import (

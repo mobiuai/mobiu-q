@@ -1,4 +1,4 @@
-# Mobiu-Q v2.9.0
+# Mobiu-Q v2.9.1
 
 [![PyPI version](https://badge.fury.io/py/mobiu-q.svg)](https://badge.fury.io/py/mobiu-q)
 [![License](https://img.shields.io/badge/License-Proprietary-blue)](https://mobiu.ai)
@@ -7,7 +7,7 @@
 
 ---
 
-## 🆕 What's New in v2.9.0
+## 🆕 What's New in v2.9.1
 
 **Frustration Engine** - Client-side adaptive mechanism that:
 - Detects when optimization is stuck

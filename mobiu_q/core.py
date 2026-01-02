@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 2.9.0 - The "Frustration Engine" Update
+Version: 2.9.1 - The "Frustration Engine" Update
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -485,8 +485,8 @@ class _MobiuPyTorchBackend:
         self._available_optimizers = AVAILABLE_OPTIMIZERS
         self.sync_interval = sync_interval
         self._local_step_count = 0
-        self._accumulated_loss = 0.0
-        self._loss_count = 0
+        self._accumulated_metric = 0.0
+        self._metric_count = 0
         
         # Start session
         self._start_session()
@@ -543,88 +543,68 @@ class _MobiuPyTorchBackend:
             if self.verbose:
                 print(f"⚠️  Cannot connect to Mobiu-Q: {e}. Using constant LR.")
     
-    def step(self, energy: float = None):
+    def step(self, metric: float = None):
         """
-        Perform hybrid optimization step with sync_interval.
-    
-        1. Apply Frustration Engine (client-side, instant)
-        2. Accumulate energy locally
-        3. Every sync_interval steps: send avg to cloud, get adaptive_lr
-        4. Update local optimizer's LR
-        5. Execute local PyTorch step (always)
-    
-        Args:
-            energy: Loss value or episode return. If None, uses last value.
+        metric: The Loss (minimize) or Reward (maximize).
         """
         self._local_step_count += 1
         
-        # 1. FRUSTRATION ENGINE (Client-Side, Zero Latency)
-        if self.frustration_engine and energy is not None:
-            score = energy if self.maximize else -energy
+        # 1. FRUSTRATION ENGINE (Client-Side Logic)
+        if self.frustration_engine and metric is not None:
+            # Engine always wants "Higher is Better" for its internal logic
+            score = metric if self.maximize else -metric
+            
+            # Get Boost Factor (1.0, 2.0, or 3.0)
             factor = self.frustration_engine.get_lr_factor(score)
             
+            # If Engine detects stagnation, apply boost immediately
             if factor > 1.0:
                 new_lr = self.base_lr * factor
                 for pg in self.optimizer.param_groups:
                     pg['lr'] = new_lr
-    
-        # 2. Accumulate energy
-        if energy is not None:
-            self._last_energy = float(energy)
-            self.energy_history.append(self._last_energy)
-            self._accumulated_loss += self._last_energy
-            self._loss_count += 1
-    
-        # Check if time to sync with cloud
+                # Log only when actual change happens
+                self.lr_history.append(new_lr)
+
+        # 2. CLOUD SYNC (Soft Algebra)
+        if metric is not None:
+            self._accumulated_metric += metric
+            self._metric_count += 1
+
         should_sync = (
-            self.session_id is not None and 
-            self._loss_count > 0 and
+            self.session_id and self._metric_count > 0 and
             (self._local_step_count % self.sync_interval == 0)
         )
-    
-        if should_sync:
-            # Compute average loss since last sync
-            avg_energy = self._accumulated_loss / self._loss_count
-        
-            try:
-                # Retry loop for rate limiting
-                for attempt in range(3):
-                    r = requests.post(self.api_endpoint, json={
-                        'action': 'step',
-                        'license_key': self.license_key,
-                        'session_id': self.session_id,
-                        'params': [0.0],      # Dummy - minimal payload
-                        'gradient': [0.0],    # Dummy - minimal payload
-                        'energy': avg_energy  # Send averaged loss!
-                    }, timeout=1.0)  # Fast timeout
-                
-                    if r.status_code == 429:  # Rate limited
-                        if attempt < 2:
-                            time.sleep(0.1)
-                            continue
-                        else:
-                            break  # Give up, use current LR
-                    break
-            
-                data = r.json()
-            
-                if data.get('success') and 'adaptive_lr' in data:
-                    new_lr = data['adaptive_lr']
-                    self.lr_history.append(new_lr)
 
-                    # Update local optimizer's LR
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = new_lr
+        if should_sync:
+            avg_metric = self._accumulated_metric / self._metric_count
+            
+            # --- FIX: Direction Correction ---
+            # Cloud assumes Physics/Energy (Lower = Better).
+            # If we are Maximizing (Reward/Sharpe), we flip sign so Cloud sees "Energy dropping".
+            energy_to_send = -avg_metric if self.maximize else avg_metric
+            
+            try:
+                # Send to cloud for Soft Algebra analysis
+                r = requests.post(self.api_endpoint, json={
+                    'action': 'step',
+                    'license_key': self.license_key,
+                    'session_id': self.session_id,
+                    'params': [0.0], 
+                    'gradient': [0.0],
+                    'energy': energy_to_send # <--- Corrected Value
+                }, timeout=1.0)
+                
+                # Cloud suggests a new BASELINE LR (based on landscape difficulty)
+                data = r.json()
+                if data.get('success') and 'adaptive_lr' in data:
+                    self.base_lr = data['adaptive_lr'] 
                     
-            except Exception:
-                # On failure, keep using current LR (don't crash training)
-                pass
-        
-            # Reset accumulators
-            self._accumulated_loss = 0.0
-            self._loss_count = 0
-    
-        # Execute local PyTorch step (always - this is the actual weight update)
+            except: pass
+            
+            self._accumulated_metric = 0.0
+            self._metric_count = 0
+
+        # 3. PyTorch Step (Execute weights update)
         self.optimizer.step()
     
     def zero_grad(self):
@@ -639,8 +619,8 @@ class _MobiuPyTorchBackend:
     
         # Reset sync counters
         self._local_step_count = 0
-        self._accumulated_loss = 0.0
-        self._loss_count = 0
+        self._accumulated_metric = 0.0
+        self._metric_count = 0
         
         # Reset Frustration Engine
         if self.frustration_engine:
@@ -1408,7 +1388,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "2.9.0"
+__version__ = "2.9.1"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
