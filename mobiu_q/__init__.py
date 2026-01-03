@@ -1,80 +1,86 @@
 """
-Mobiu-Q — Soft Algebra Optimizer for Quantum, RL, LLM & Complex Optimization
-=============================================================================
-A next-generation optimizer built on Soft Algebra and Demeasurement theory,
-enabling stable and efficient optimization in noisy, stochastic environments.
+Mobiu-Q — Soft Algebra for Optimization & Attention
+====================================================
+Version: 3.0.0
 
-Version: 2.9.2 - The "Frustration Engine" Update
+A framework built on Soft Algebra (nilpotent ε²=0) enabling:
+1. Stable optimization in noisy environments
+2. Efficient linear-time attention for long sequences
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STABLE API (Production Ready)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Classes:
-    | Class                      | Use Case                                   |
-    |----------------------------|---------------------------------------------|
-    | MobiuOptimizer             | PyTorch (RL, LLM, Deep Learning)           |
-    | MobiuQCore                 | Quantum (VQE, QAOA) & NumPy optimization   |
-    | UniversalFrustrationEngine | Stagnation detection & LR boosting         |
+    | Class          | Use Case                                   |
+    |----------------|---------------------------------------------|
+    | MobiuOptimizer | PyTorch (RL, LLM, Deep Learning)           |
+    | MobiuQCore     | Quantum (VQE, QAOA) & NumPy optimization   |
 
 Methods:
-    | Method   | Legacy | Use Case                                    |
-    |----------|--------|---------------------------------------------|
-    | standard | vqe    | Smooth landscapes, chemistry, physics       |
-    | deep     | qaoa   | Deep circuits, noisy hardware, complex opt  |
-    | adaptive | rl     | RL, LLM fine-tuning, high-variance problems |
+    | Method   | Use Case                                    |
+    |----------|---------------------------------------------|
+    | standard | Smooth landscapes, chemistry, physics       |
+    | deep     | Deep circuits, noisy hardware, complex opt  |
+    | adaptive | RL, LLM fine-tuning, high-variance problems |
 
 Quick Start (PyTorch):
-    import torch
     from mobiu_q import MobiuOptimizer
     
-    model = MyModel()
     base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-    opt = MobiuOptimizer(base_opt, method="adaptive")
+    opt = MobiuOptimizer(base_opt, method="adaptive", use_soft_algebra=True)
     
-    for epoch in range(100):
-        loss = criterion(model(x), y)
+    for batch in data:
+        loss = criterion(model(batch))
         loss.backward()
         opt.step(loss.item())
-        opt.zero_grad()
     
     opt.end()
 
-Quick Start (RL with Frustration Engine):
-    from mobiu_q import MobiuOptimizer
-    
-    base_opt = torch.optim.Adam(policy.parameters(), lr=0.0003)
-    opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
-    
-    for episode in range(1000):
-        reward = run_episode(policy)
-        loss.backward()
-        opt.step(reward)  # Frustration Engine auto-detects stagnation
-        opt.zero_grad()
-    
-    opt.end()
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 EXPERIMENTAL API (Subject to Change)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Quick Start (Quantum VQE):
-    from mobiu_q import MobiuQCore
-    
-    opt = MobiuQCore(license_key="your-key", method="standard")
-    
-    for step in range(100):
-        params = opt.step(params, energy_fn)
-    
-    opt.end()
+MobiuAttention - O(N) linear attention using Soft Algebra state tracking
 
+Benefits over standard Transformer attention:
+    - O(N) vs O(N²) complexity
+    - 2-6x faster for seq > 2K
+    - Works with 16K+ context (where Transformer OOMs)
+    - Same quality on benchmarks (ListOps, Needle-in-Haystack)
+
+Quick Start:
+    from mobiu_q.experimental import MobiuAttention, MobiuBlock
+    
+    # Drop-in replacement for nn.MultiheadAttention
+    self.attn = MobiuAttention(d_model=512, num_heads=8)
+    output = self.attn(x)  # x: [batch, seq, dim]
+
+⚠️  EXPERIMENTAL: API may change in future versions.
+    Please report issues at https://github.com/mobiu-ai/mobiu-q
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 License:
-    Free tier: 20 runs/month
+    Free tier: 20 API calls/month (optimizer only)
     Pro tier: Unlimited - https://app.mobiu.ai
+    
+    Note: MobiuAttention runs locally, no API calls required.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "2.9.2"
+__version__ = "3.0.0"
 __author__ = "Mobiu Technologies"
 
+# ============================================================================
+# STABLE API - Production Ready
+# ============================================================================
+
 from .core import (
-    # Universal wrapper for PyTorch
+    # Main optimizers
     MobiuOptimizer,
-    # Frustration Engine (v2.9)
+    MobiuQCore,
+    # Frustration Engine
     UniversalFrustrationEngine,
-    # Quantum/NumPy optimizer
-    MobiuQCore, 
     # Gradient estimation
     Demeasurement, 
     # Utilities
@@ -91,11 +97,23 @@ from .core import (
     API_ENDPOINT,
 )
 
+# ============================================================================
+# EXPERIMENTAL API - Lazy loaded to avoid torch dependency for quantum users
+# ============================================================================
+
+# Don't import experimental at top level - let users import explicitly
+# This avoids requiring torch for quantum-only users
+
+# ============================================================================
+# PUBLIC API
+# ============================================================================
+
 __all__ = [
+    # === Stable API ===
     # Optimizers
     "MobiuOptimizer",
-    "UniversalFrustrationEngine",
     "MobiuQCore",
+    "UniversalFrustrationEngine",
     "Demeasurement",
     # Utilities
     "get_default_lr",

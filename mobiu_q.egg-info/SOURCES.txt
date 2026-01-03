@@ -10,3 +10,6 @@ mobiu_q.egg-info/dependency_links.txt
 mobiu_q.egg-info/entry_points.txt
 mobiu_q.egg-info/requires.txt
 mobiu_q.egg-info/top_level.txt
+mobiu_q/experimental/__init__.py
+mobiu_q/experimental/layers.py
+mobiu_q/experimental/layers_fast.py
