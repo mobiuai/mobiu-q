@@ -1,5 +1,5 @@
 """
-Mobiu-Q v3.0.4 - Setup Configuration
+Mobiu-Q v3.0.5 - Setup Configuration
 """
 
 from setuptools import setup, find_packages

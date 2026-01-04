@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.0.4 - Explicit loss=/reward= API
+Version: 3.0.5 - Explicit loss=/reward= API
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -590,11 +590,13 @@ class _MobiuPyTorchBackend:
                 for pg in self.optimizer.param_groups:
                     pg['lr'] = new_lr
     
-        # 2. Accumulate energy
+        # 2. Accumulate energy (convert to "lower is better" for cloud)
         if energy is not None:
             self._last_energy = float(energy)
             self.energy_history.append(self._last_energy)
-            self._accumulated_loss += self._last_energy
+            # Cloud expects "lower is better", so flip sign for rewards
+            energy_for_cloud = -energy if is_reward else energy
+            self._accumulated_loss += energy_for_cloud
             self._loss_count += 1
     
         # Check if time to sync with cloud
@@ -1430,7 +1432,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.0.4"
+__version__ = "3.0.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
