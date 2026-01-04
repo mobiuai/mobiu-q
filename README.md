@@ -1,4 +1,4 @@
-# Mobiu-Q v3.0.2
+# Mobiu-Q v3.0.3
 
 **Soft Algebra for Optimization & Attention**
 
@@ -96,24 +96,28 @@ Tested on synthetic crypto market with regime switching (bull/bear), flash crash
 
 ### Maximize vs Minimize
 
-By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), set `maximize=True`:
-
+By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), use the explicit keyword arguments:
 ```python
-# Loss minimization (default) - for supervised learning, VQE
-opt = MobiuOptimizer(base_opt, method="standard")
-opt.step(loss.item())  # Lower is better
+# Loss minimization - for supervised learning, VQE
+opt.step(loss=loss.item())  # Lower is better
 
 # Reward maximization - for RL, trading
-opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
-opt.step(episode_return)  # Higher is better
+opt.step(reward=episode_return)  # Higher is better
 ```
 
-| Use Case | maximize | What to pass to step() |
-|----------|----------|------------------------|
-| Supervised Learning | `False` (default) | `loss.item()` |
-| VQE / QAOA | `False` (default) | `energy` |
-| RL (policy gradient) | `True` | `episode_return` |
-| Trading | `True` | `profit` or `sharpe_ratio` |
+| Use Case | What to pass | Example |
+|----------|--------------|---------|
+| Supervised Learning | `loss=` | `opt.step(loss=loss.item())` |
+| VQE / QAOA | `loss=` | `opt.step(loss=energy)` |
+| RL (policy gradient) | `reward=` | `opt.step(reward=episode_return)` |
+| Trading | `reward=` | `opt.step(reward=profit)` |
+
+**Legacy API** (still supported):
+```python
+# Old way - use maximize flag at init
+opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+opt.step(episode_return)
+```
 
 **Why does this matter?** Soft Algebra tracks the "direction of improvement". Passing reward as loss (or vice versa) confuses the optimizer.
 

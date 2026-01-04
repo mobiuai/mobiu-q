@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.0.2 - Frustration Engine for Quantum
+Version: 3.0.3 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -500,8 +500,9 @@ class _MobiuPyTorchBackend:
                 'method': self.method,
                 'mode': 'simulation',
                 'base_lr': self.base_lr,
-                'base_optimizer': 'Adam',  # Doesn't matter - we use local
-                'use_soft_algebra': self.use_soft_algebra
+                'base_optimizer': 'Adam',
+                'use_soft_algebra': self.use_soft_algebra,
+                'maximize': self.maximize  # <-- להוסיף!
             }, timeout=10)
             
             data = r.json()
@@ -582,7 +583,7 @@ class _MobiuPyTorchBackend:
             # --- FIX: Direction Correction ---
             # Cloud assumes Physics/Energy (Lower = Better).
             # If we are Maximizing (Reward/Sharpe), we flip sign so Cloud sees "Energy dropping".
-            energy_to_send = -avg_metric if self.maximize else avg_metric
+            energy_to_send = avg_metric
             
             try:
                 # Send to cloud for Soft Algebra analysis
@@ -909,7 +910,8 @@ class MobiuQCore:
                     "mode": self.mode,
                     "base_lr": self.base_lr,
                     "base_optimizer": self.base_optimizer,
-                    "use_soft_algebra": self.use_soft_algebra
+                    "use_soft_algebra": self.use_soft_algebra,
+                    "maximize": self.maximize  # <-- להוסיף!
                 },
                 timeout=10
             )
@@ -1083,7 +1085,7 @@ class MobiuQCore:
         
         try:
             # Retry loop for rate limiting
-            energy_to_send = -energy if self.maximize else energy
+            energy_to_send = energy
             for attempt in range(3):
                 response = requests.post(
                     self.api_endpoint,
@@ -1409,7 +1411,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.0.2"
+__version__ = "3.0.3"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
