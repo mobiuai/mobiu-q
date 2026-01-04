@@ -1,4 +1,4 @@
-# Mobiu-Q v3.0.1
+# Mobiu-Q v3.0.2
 
 **Soft Algebra for Optimization & Attention**
 
@@ -131,7 +131,7 @@ opt_off = MobiuOptimizer(base_opt, use_soft_algebra=False)
 
 ## Base Optimizers
 
-Mobiu-Q wraps these base optimizers with Soft Algebra enhancement:
+Mobiu-Q enhances these base optimizers with Soft Algebra:
 
 | Optimizer | Description | Best For |
 |-----------|-------------|----------|
@@ -143,14 +143,57 @@ Mobiu-Q wraps these base optimizers with Soft Algebra enhancement:
 | `Momentum` | SGD with momentum | RL, LLM fine-tuning |
 | `LAMB` | Layer-wise adaptive scaling | Large batch training |
 
-**⚠️ Important:** Optimizer names are **case-sensitive!**
+### Choosing an Optimizer
+
+**PyTorch mode** - Choose your optimizer when creating the base optimizer:
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+# Using Adam (default, recommended for most cases)
+base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+opt = MobiuOptimizer(base_opt, method="adaptive")
+
+# Using AdamW (recommended for LLM/Transformers)
+base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=0.01)
+opt = MobiuOptimizer(base_opt, method="adaptive")
+
+# Using SGD with Momentum (recommended for RL)
+base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
+opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+
+# Using NAdam
+base_opt = torch.optim.NAdam(model.parameters(), lr=0.0003)
+opt = MobiuOptimizer(base_opt, method="deep")
+```
+
+**Quantum mode** - Choose your optimizer via the `base_optimizer` parameter:
+
+```python
+from mobiu_q import MobiuOptimizer
+import numpy as np
+
+params = np.random.randn(10)
+
+# Using Adam (default)
+opt = MobiuOptimizer(params, method="standard")
+
+# Using NAdam
+opt = MobiuOptimizer(params, method="standard", base_optimizer="NAdam")
+
+# Using AMSGrad
+opt = MobiuOptimizer(params, method="deep", base_optimizer="AMSGrad")
+```
+
+**⚠️ Important:** In Quantum mode, optimizer names are **case-sensitive!**
 
 ```python
 # ✅ Correct
-opt = MobiuOptimizer(base_opt, base_optimizer="NAdam")
+opt = MobiuOptimizer(params, base_optimizer="NAdam")
 
 # ❌ Wrong - will fall back to Adam
-opt = MobiuOptimizer(base_opt, base_optimizer="nadam")
+opt = MobiuOptimizer(params, base_optimizer="nadam")
 ```
 
 ---
@@ -165,7 +208,7 @@ Different optimizers work better for different problems:
 
 | Problem Type | Recommended Optimizer |
 |--------------|----------------------|
-| LoRA / LLM | `Momentum` |
+| LoRA / LLM | `Momentum` or `AdamW` |
 | VQE / Chemistry | `Adam` |
 | QAOA | `NAdam` |
 | RL / Trading | `Momentum` |
@@ -173,11 +216,12 @@ Different optimizers work better for different problems:
 | Large Batch | `LAMB` |
 
 ```python
-# If Adam isn't working, try Momentum:
-opt = MobiuOptimizer(base_opt, base_optimizer="Momentum")
+# PyTorch: If Adam isn't working, try Momentum:
+base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
+opt = MobiuOptimizer(base_opt, method="adaptive")
 
-# If Momentum isn't working, try NAdam:
-opt = MobiuOptimizer(base_opt, base_optimizer="NAdam")
+# Quantum: If Adam isn't working, try NAdam:
+opt = MobiuOptimizer(params, base_optimizer="NAdam", method="adaptive")
 ```
 
 ### 2. Switch Method
@@ -326,7 +370,7 @@ Pro tier: Unlimited - https://app.mobiu.ai
 @software{mobiu_q,
   title={Mobiu-Q: Soft Algebra for Optimization and Attention},
   author={Mobiu Technologies},
-  year={2025},
+  year={2026},
   url={https://github.com/mobiu-ai/mobiu-q}
 }
 ```
