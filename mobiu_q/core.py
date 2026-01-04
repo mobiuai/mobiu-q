@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.0.5 - Explicit loss=/reward= API
+Version: 3.0.6 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -340,10 +340,8 @@ class MobiuOptimizer:
         Perform optimization step.
         
         For PyTorch (hybrid mode):
-            opt.step(loss=loss_value)     # Loss minimization (supervised, VQE)
-            opt.step(reward=reward_value) # Reward maximization (RL, trading)
-            opt.step(loss_value)          # Legacy: uses maximize flag
-            opt.step()                    # Use last value
+            opt.step(loss_value)  # Pass scalar loss/return
+            opt.step()            # Use last loss value
         
         For Quantum (MobiuQCore mode):
             params = opt.step(params, gradient, energy)
@@ -487,8 +485,8 @@ class _MobiuPyTorchBackend:
         self._available_optimizers = AVAILABLE_OPTIMIZERS
         self.sync_interval = sync_interval
         self._local_step_count = 0
-        self._accumulated_loss = 0.0
-        self._loss_count = 0
+        self._accumulated_metric = 0.0
+        self._metric_count = 0
         
         # Start session
         self._start_session()
@@ -502,8 +500,9 @@ class _MobiuPyTorchBackend:
                 'method': self.method,
                 'mode': 'simulation',
                 'base_lr': self.base_lr,
-                'base_optimizer': 'Adam',  # Doesn't matter - we use local
-                'use_soft_algebra': self.use_soft_algebra
+                'base_optimizer': 'Adam',
+                'use_soft_algebra': self.use_soft_algebra,
+                'maximize': self.maximize
             }, timeout=10)
             
             data = r.json()
@@ -545,110 +544,69 @@ class _MobiuPyTorchBackend:
             if self.verbose:
                 print(f"⚠️  Cannot connect to Mobiu-Q: {e}. Using constant LR.")
     
-    def step(self, energy: float = None, *, loss: float = None, reward: float = None):
+    def step(self, metric: float = None):
         """
-        Perform hybrid optimization step with sync_interval.
-    
-        1. Apply Frustration Engine (client-side, instant)
-        2. Accumulate energy locally
-        3. Every sync_interval steps: send avg to cloud, get adaptive_lr
-        4. Update local optimizer's LR
-        5. Execute local PyTorch step (always)
-    
-        Args:
-            energy: (Legacy) Loss value or episode return. If None, uses last value.
-            loss: Loss value (lower is better) - use for supervised learning, VQE
-            reward: Reward value (higher is better) - use for RL, trading
-            
-        Note:
-            Use explicit `loss=` or `reward=` keywords for clarity.
-            Legacy positional `energy` still works with `maximize` flag.
+        metric: The Loss (minimize) or Reward (maximize).
         """
-        # Handle new API: loss= or reward=
-        if loss is not None and reward is not None:
-            raise ValueError("Cannot specify both loss= and reward=. Use one or the other.")
-        
-        if loss is not None:
-            energy = loss
-            is_reward = False
-        elif reward is not None:
-            energy = reward
-            is_reward = True
-        else:
-            # Legacy: use maximize flag
-            is_reward = self.maximize
-        
         self._local_step_count += 1
         
-        # 1. FRUSTRATION ENGINE (Client-Side, Zero Latency)
-        if self.frustration_engine and energy is not None:
-            score = energy if is_reward else -energy
+        # 1. FRUSTRATION ENGINE (Client-Side Logic)
+        if self.frustration_engine and metric is not None:
+            # Engine always wants "Higher is Better" for its internal logic
+            score = metric if self.maximize else -metric
+            
+            # Get Boost Factor (1.0, 2.0, or 3.0)
             factor = self.frustration_engine.get_lr_factor(score)
             
+            # If Engine detects stagnation, apply boost immediately
             if factor > 1.0:
                 new_lr = self.base_lr * factor
                 for pg in self.optimizer.param_groups:
                     pg['lr'] = new_lr
-    
-        # 2. Accumulate energy (convert to "lower is better" for cloud)
-        if energy is not None:
-            self._last_energy = float(energy)
-            self.energy_history.append(self._last_energy)
-            # Cloud expects "lower is better", so flip sign for rewards
-            energy_for_cloud = -energy if is_reward else energy
-            self._accumulated_loss += energy_for_cloud
-            self._loss_count += 1
-    
-        # Check if time to sync with cloud
+                # Log only when actual change happens
+                self.lr_history.append(new_lr)
+
+        # 2. CLOUD SYNC (Soft Algebra)
+        if metric is not None:
+            self._accumulated_metric += metric
+            self._metric_count += 1
+
         should_sync = (
-            self.session_id is not None and 
-            self._loss_count > 0 and
+            self.use_soft_algebra and  # הוספה!
+            self.session_id and self._metric_count > 0 and
             (self._local_step_count % self.sync_interval == 0)
         )
-    
-        if should_sync:
-            # Compute average loss since last sync
-            avg_energy = self._accumulated_loss / self._loss_count
-        
-            try:
-                # Retry loop for rate limiting
-                for attempt in range(3):
-                    r = requests.post(self.api_endpoint, json={
-                        'action': 'step',
-                        'license_key': self.license_key,
-                        'session_id': self.session_id,
-                        'params': [0.0],      # Dummy - minimal payload
-                        'gradient': [0.0],    # Dummy - minimal payload
-                        'energy': avg_energy  # Send averaged loss!
-                    }, timeout=1.0)  # Fast timeout
-                
-                    if r.status_code == 429:  # Rate limited
-                        if attempt < 2:
-                            time.sleep(0.1)
-                            continue
-                        else:
-                            break  # Give up, use current LR
-                    break
-            
-                data = r.json()
-            
-                if data.get('success') and 'adaptive_lr' in data:
-                    new_lr = data['adaptive_lr']
-                    self.lr_history.append(new_lr)
 
-                    # Update local optimizer's LR
-                    for param_group in self.optimizer.param_groups:
-                        param_group['lr'] = new_lr
+        if should_sync:
+            avg_metric = self._accumulated_metric / self._metric_count
+            
+            # --- FIX: Direction Correction ---
+            # Cloud assumes Physics/Energy (Lower = Better).
+            # If we are Maximizing (Reward/Sharpe), we flip sign so Cloud sees "Energy dropping".
+            energy_to_send = avg_metric
+            
+            try:
+                # Send to cloud for Soft Algebra analysis
+                r = requests.post(self.api_endpoint, json={
+                    'action': 'step',
+                    'license_key': self.license_key,
+                    'session_id': self.session_id,
+                    'params': [0.0], 
+                    'gradient': [0.0],
+                    'energy': energy_to_send # <--- Corrected Value
+                }, timeout=1.0)
+                
+                # Cloud suggests a new BASELINE LR (based on landscape difficulty)
+                data = r.json()
+                if data.get('success') and 'adaptive_lr' in data:
+                    self.base_lr = data['adaptive_lr'] 
                     
-            except Exception:
-                # On failure, keep using current LR (don't crash training)
-                pass
-        
-            # Reset accumulators
-            self._accumulated_loss = 0.0
-            self._loss_count = 0
-    
-        # Execute local PyTorch step (always - this is the actual weight update)
+            except: pass
+            
+            self._accumulated_metric = 0.0
+            self._metric_count = 0
+
+        # 3. PyTorch Step (Execute weights update)
         self.optimizer.step()
     
     def zero_grad(self):
@@ -663,8 +621,8 @@ class _MobiuPyTorchBackend:
     
         # Reset sync counters
         self._local_step_count = 0
-        self._accumulated_loss = 0.0
-        self._loss_count = 0
+        self._accumulated_metric = 0.0
+        self._metric_count = 0
         
         # Reset Frustration Engine
         if self.frustration_engine:
@@ -847,9 +805,9 @@ class MobiuQCore:
         base_lr: Optional[float] = None,
         base_optimizer: str = DEFAULT_OPTIMIZER,
         use_soft_algebra: bool = True,
+        maximize: bool = False,  # NEW
         offline_fallback: bool = True,
         verbose: bool = True,
-        # Deprecated parameters (backward compatibility)
         problem: Optional[str] = None,
     ):
         self.license_key = license_key or get_license_key()
@@ -902,6 +860,11 @@ class MobiuQCore:
         self.verbose = verbose
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
+
+        # Frustration Engine (NEW)
+        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
+        self._current_lr = self.base_lr
+        self.maximize = maximize
         
         # Local state (for offline fallback)
         self._offline_mode = False
@@ -947,7 +910,8 @@ class MobiuQCore:
                     "mode": self.mode,
                     "base_lr": self.base_lr,
                     "base_optimizer": self.base_optimizer,
-                    "use_soft_algebra": self.use_soft_algebra
+                    "use_soft_algebra": self.use_soft_algebra,
+                    "maximize": self.maximize  # <-- להוסיף!
                 },
                 timeout=10
             )
@@ -980,6 +944,9 @@ class MobiuQCore:
                     mode_str += f", optimizer={server_optimizer}"
                 if not self.use_soft_algebra:
                     mode_str += ", SA=off"
+
+                if self.maximize:
+                    mode_str += ", maximize=True"
                 
                 if remaining == 'unlimited':
                     print(f"🚀 Mobiu-Q session started (Pro tier) [{mode_str}]")
@@ -1101,12 +1068,24 @@ class MobiuQCore:
                 raise ValueError("energy is required when providing gradient array")
     
         self.energy_history.append(energy)
+
+        # === FRUSTRATION ENGINE ===
+        if self.frustration_engine:
+            score = energy if self.maximize else -energy
+            factor = self.frustration_engine.get_lr_factor(score)
+    
+            if factor > 1.0:
+                self._current_lr = self.base_lr * factor
+                self.lr_history.append(self._current_lr)
+            else:
+                self._current_lr = self.base_lr
         
         if self._offline_mode:
             return self._offline_step(params, gradient)
         
         try:
             # Retry loop for rate limiting
+            energy_to_send = energy
             for attempt in range(3):
                 response = requests.post(
                     self.api_endpoint,
@@ -1116,7 +1095,7 @@ class MobiuQCore:
                         "action": "step",
                         "params": params.tolist(),
                         "gradient": gradient.tolist(),
-                        "energy": float(energy)
+                        "energy": float(energy_to_send)
                     },
                     timeout=30
                 )
@@ -1164,7 +1143,7 @@ class MobiuQCore:
             self._local_m = np.zeros_like(gradient)
             self._local_v = np.zeros_like(gradient)
         
-        lr = self.base_lr
+        lr = self._current_lr
         beta1, beta2, eps = 0.9, 0.999, 1e-8
         
         self._local_m = beta1 * self._local_m + (1 - beta1) * gradient
@@ -1432,7 +1411,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.0.5"
+__version__ = "3.0.6"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

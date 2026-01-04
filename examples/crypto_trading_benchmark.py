@@ -280,7 +280,7 @@ def train_reinforce(policy, optimizer, env, num_episodes, use_mobiu=False):
         loss.backward()
         
         if use_mobiu:
-            optimizer.step(reward=sum(rewards))
+            optimizer.step(sum(rewards))
         else:
             optimizer.step()
         
@@ -328,6 +328,7 @@ def main():
             optim.Adam(policy_mobiu.parameters(), lr=BASE_LR),
             license_key=LICENSE_KEY,
             method='adaptive',
+            maximize=True,
             use_soft_algebra=True,
             verbose=False
         )

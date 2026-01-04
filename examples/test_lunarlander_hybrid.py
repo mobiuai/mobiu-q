@@ -117,7 +117,7 @@ def train_policy(env_name, policy, optimizer, num_episodes, seed, label=""):
         # Backward + step
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step(reward=sum(rewards))
+        optimizer.step(sum(rewards))
         
         returns.append(sum(rewards))
         
@@ -189,6 +189,7 @@ def main():
             base_opt_mobiu,
             license_key=LICENSE_KEY,
             method='adaptive',
+            maximize=True,
             use_soft_algebra=True,   # ← With Soft Algebra!
             verbose=False
         )

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 3.0.5
+Version: 3.0.6
 Summary: Soft Algebra Optimizer for Quantum & Complex Optimization
 Home-page: https://github.com/mobiu-ai/mobiu-q
 Author: Mobiu Technologies
@@ -33,7 +33,7 @@ Dynamic: author
 Dynamic: home-page
 Dynamic: requires-python
 
-# Mobiu-Q v3.0.5
+# Mobiu-Q v3.0.6
 
 **Soft Algebra for Optimization & Attention**
 
@@ -131,30 +131,25 @@ Tested on synthetic crypto market with regime switching (bull/bear), flash crash
 
 ### Maximize vs Minimize
 
-By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), use the explicit keyword arguments:
+By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), set `maximize=True`:
 ```python
-# Loss minimization - for supervised learning, VQE
-opt.step(loss=loss.item())  # Lower is better
+# Loss minimization (default) - for supervised learning, VQE
+opt = MobiuOptimizer(base_opt, method="adaptive")
+opt.step(loss.item())
 
 # Reward maximization - for RL, trading
-opt.step(reward=episode_return)  # Higher is better
-```
-
-| Use Case | What to pass | Example |
-|----------|--------------|---------|
-| Supervised Learning | `loss=` | `opt.step(loss=loss.item())` |
-| VQE / QAOA | `loss=` | `opt.step(loss=energy)` |
-| RL (policy gradient) | `reward=` | `opt.step(reward=episode_return)` |
-| Trading | `reward=` | `opt.step(reward=profit)` |
-
-**Legacy API** (still supported):
-```python
-# Old way - use maximize flag at init
 opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
 opt.step(episode_return)
 ```
 
-**Why does this matter?** Soft Algebra tracks the "direction of improvement". Passing reward as loss (or vice versa) confuses the optimizer.
+| Use Case | maximize= | Example |
+|----------|-----------|---------|
+| Supervised Learning | `False` (default) | `opt.step(loss.item())` |
+| VQE / QAOA | `False` (default) | `opt.step(energy)` |
+| RL (policy gradient) | `True` | `opt.step(episode_return)` |
+| Trading | `True` | `opt.step(profit)` |
+
+**Why does this matter?** Soft Algebra tracks the "direction of improvement". Using the wrong setting confuses the optimizer.
 
 ### A/B Testing
 

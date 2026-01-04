@@ -178,6 +178,7 @@ def train_ppo(seed, use_mobiu=True):
             license_key=LICENSE_KEY,
             method='adaptive',
             use_soft_algebra=True,
+            maximize=True,
             sync_interval=50,
             verbose=False
         )
@@ -280,7 +281,7 @@ def train_ppo(seed, use_mobiu=True):
                     if use_mobiu and HAS_MOBIU:
                         # Pass recent episode reward as metric
                         metric = episode_rewards[-1] if episode_rewards else 0
-                        optimizer.step(reward=metric)
+                        optimizer.step(metric)
                     else:
                         optimizer.step()
             

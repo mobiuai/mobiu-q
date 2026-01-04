@@ -131,7 +131,8 @@ def train_ppo(env_name, seed, use_mobiu=True):
             base_opt,
             license_key=LICENSE_KEY,
             method='adaptive',
-            use_soft_algebra=True,            
+            use_soft_algebra=True, 
+            maximize=True,           
             sync_interval=50,
             verbose=False
         )
@@ -141,6 +142,7 @@ def train_ppo(env_name, seed, use_mobiu=True):
             license_key=LICENSE_KEY,
             method='adaptive',
             use_soft_algebra=False,
+            maximize=True,
             sync_interval=50,
             verbose=False
         ) if HAS_MOBIU else base_opt
@@ -260,7 +262,7 @@ def train_ppo(env_name, seed, use_mobiu=True):
                     
                     if HAS_MOBIU:
                         metric = episode_rewards[-1] if episode_rewards else 0
-                        optimizer.step(reward=metric)
+                        optimizer.step(metric)
                     else:
                         optimizer.step()
             
