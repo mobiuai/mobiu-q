@@ -1,5 +1,5 @@
 """
-Mobiu-Q v3.0.0 - Setup Configuration
+Mobiu-Q v3.0.1 - Setup Configuration
 """
 
 from setuptools import setup, find_packages
@@ -9,7 +9,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="mobiu-q",
-    version="3.0.0",
+    version="3.0.1",
     author="Mobiu Technologies",
     author_email="support@mobiu.ai",
     description="Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs",
