@@ -34,7 +34,7 @@ except ImportError:
 # CONFIGURATION
 # ============================================================================
 
-LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "YOUT_KEY_HERE")
+LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "YOUR_KEY_HERE")
 
 NUM_EPISODES = 500
 NUM_SEEDS = 10
@@ -280,7 +280,7 @@ def train_reinforce(policy, optimizer, env, num_episodes, use_mobiu=False):
         loss.backward()
         
         if use_mobiu:
-            optimizer.step(sum(rewards))
+            optimizer.step(reward=sum(rewards))
         else:
             optimizer.step()
         
@@ -329,7 +329,6 @@ def main():
             license_key=LICENSE_KEY,
             method='adaptive',
             use_soft_algebra=True,
-            maximize=True,
             verbose=False
         )
         

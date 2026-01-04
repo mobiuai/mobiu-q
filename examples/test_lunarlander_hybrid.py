@@ -36,7 +36,7 @@ from mobiu_q import MobiuOptimizer
 # CONFIGURATION
 # ============================================================
 
-LICENSE_KEY = "YOUR_LICENCE"
+LICENSE_KEY = "YOUR_KEY_HERE"
 
 # Test settings - MATCHING NOTEBOOK
 NUM_EPISODES = 1000
@@ -117,7 +117,7 @@ def train_policy(env_name, policy, optimizer, num_episodes, seed, label=""):
         # Backward + step
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step(sum(rewards))  # Pass episode return
+        optimizer.step(reward=sum(rewards))
         
         returns.append(sum(rewards))
         

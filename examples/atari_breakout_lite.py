@@ -212,7 +212,7 @@ def train_atari(
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 10)
-                optimizer.step(loss.item())
+                optimizer.step(loss=loss.item())
             
             if total_steps % target_update == 0:
                 target_net.load_state_dict(policy_net.state_dict())
@@ -281,7 +281,7 @@ def run_comparison(num_episodes=200, num_seeds=3, license_key="YOUR_KEY"):
     return results
 
 # %% Cell 8: הרצה
-LICENSE_KEY = "ENTER_LICENCE_HERE"
+LICENSE_KEY = "EYOUR_KEY_HERE"
 
 # בדיקה קצרה - 200 episodes, 3 seeds (~1-2 שעות)
 results = run_comparison(
