@@ -1,4 +1,4 @@
-# Mobiu-Q v3.0.6
+# Mobiu-Q v3.0.7
 
 **Soft Algebra for Optimization & Attention**
 
@@ -34,10 +34,18 @@ pip install mobiu-q
 from mobiu_q import MobiuOptimizer
 import torch
 
+# Your license key (get one at https://app.mobiu.ai)
+LICENSE_KEY = "your-license-key-here"
+
 # Wrap any PyTorch optimizer
 model = MyModel()
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, method="adaptive", use_soft_algebra=True)
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,  # Required!
+    method="adaptive",
+    use_soft_algebra=True
+)
 
 for batch in dataloader:
     loss = criterion(model(batch))
@@ -53,6 +61,7 @@ opt.end()  # Important: release resources
 from mobiu_q.experimental import MobiuAttention, MobiuBlock
 
 # Drop-in replacement for nn.MultiheadAttention
+# Note: MobiuAttention runs locally, no license key needed!
 attn = MobiuAttention(d_model=512, num_heads=8)
 out = attn(x)  # x: [batch, seq, dim]
 
@@ -60,6 +69,33 @@ out = attn(x)  # x: [batch, seq, dim]
 block = MobiuBlock(d_model=512, num_heads=8)
 out = block(x)
 ```
+
+---
+
+## License Key
+
+MobiuOptimizer requires a license key to access the cloud API:
+
+```python
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+# PyTorch mode
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
+
+# Quantum/NumPy mode
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
+```
+
+**Get your key:** https://app.mobiu.ai
+
+| Tier | API Calls | Price |
+|------|-----------|-------|
+| Free | 20/month | $0 |
+| Pro | Unlimited | Contact us |
+
+**Note:** MobiuAttention runs locally and does NOT require a license key.
 
 ---
 
@@ -97,13 +133,16 @@ Tested on synthetic crypto market with regime switching (bull/bear), flash crash
 ### Maximize vs Minimize
 
 By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), set `maximize=True`:
+
 ```python
+LICENSE_KEY = "your-license-key-here"
+
 # Loss minimization (default) - for supervised learning, VQE
-opt = MobiuOptimizer(base_opt, method="adaptive")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 opt.step(loss.item())
 
 # Reward maximization - for RL, trading
-opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", maximize=True)
 opt.step(episode_return)
 ```
 
@@ -119,11 +158,13 @@ opt.step(episode_return)
 ### A/B Testing
 
 ```python
+LICENSE_KEY = "your-license-key-here"
+
 # Test with Soft Algebra
-opt_on = MobiuOptimizer(base_opt, use_soft_algebra=True)
+opt_on = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, use_soft_algebra=True)
 
 # Test without (baseline)
-opt_off = MobiuOptimizer(base_opt, use_soft_algebra=False)
+opt_off = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, use_soft_algebra=False)
 ```
 
 ---
@@ -150,21 +191,23 @@ Mobiu-Q enhances these base optimizers with Soft Algebra:
 import torch
 from mobiu_q import MobiuOptimizer
 
+LICENSE_KEY = "your-license-key-here"
+
 # Using Adam (default, recommended for most cases)
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, method="adaptive")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 
 # Using AdamW (recommended for LLM/Transformers)
 base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=0.01)
-opt = MobiuOptimizer(base_opt, method="adaptive")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 
 # Using SGD with Momentum (recommended for RL)
 base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
-opt = MobiuOptimizer(base_opt, method="adaptive", maximize=True)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", maximize=True)
 
 # Using NAdam
 base_opt = torch.optim.NAdam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, method="deep")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="deep")
 ```
 
 **Quantum mode** - Choose your optimizer via the `base_optimizer` parameter:
@@ -173,26 +216,27 @@ opt = MobiuOptimizer(base_opt, method="deep")
 from mobiu_q import MobiuOptimizer
 import numpy as np
 
+LICENSE_KEY = "your-license-key-here"
 params = np.random.randn(10)
 
 # Using Adam (default)
-opt = MobiuOptimizer(params, method="standard")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 
 # Using NAdam
-opt = MobiuOptimizer(params, method="standard", base_optimizer="NAdam")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard", base_optimizer="NAdam")
 
 # Using AMSGrad
-opt = MobiuOptimizer(params, method="deep", base_optimizer="AMSGrad")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="deep", base_optimizer="AMSGrad")
 ```
 
-**⚠️ Important:** In Quantum mode, optimizer names are **case-sensitive!**
+**⚠️ Important:** Optimizer names are **case-sensitive!**
 
 ```python
 # ✅ Correct
-opt = MobiuOptimizer(params, base_optimizer="NAdam")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="NAdam")
 
 # ❌ Wrong - will fall back to Adam
-opt = MobiuOptimizer(params, base_optimizer="nadam")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="nadam")
 ```
 
 ---
@@ -215,12 +259,14 @@ Different optimizers work better for different problems:
 | Large Batch | `LAMB` |
 
 ```python
+LICENSE_KEY = "your-license-key-here"
+
 # PyTorch: If Adam isn't working, try Momentum:
 base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
-opt = MobiuOptimizer(base_opt, method="adaptive")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 
 # Quantum: If Adam isn't working, try NAdam:
-opt = MobiuOptimizer(params, base_optimizer="NAdam", method="adaptive")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="NAdam", method="adaptive")
 ```
 
 ### 2. Switch Method
@@ -233,7 +279,7 @@ opt = MobiuOptimizer(params, base_optimizer="NAdam", method="adaptive")
 
 ```python
 # If standard isn't working for your problem:
-opt = MobiuOptimizer(base_opt, method="adaptive")
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 ```
 
 ### 3. Switch Mode (Quantum only)
@@ -243,7 +289,7 @@ opt = MobiuOptimizer(base_opt, method="adaptive")
 | `simulation` | `hardware` |
 
 ```python
-opt = MobiuOptimizer(params, method="standard", mode="hardware")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard", mode="hardware")
 ```
 
 ### 4. Adjust Learning Rate
@@ -293,6 +339,7 @@ Standard Transformer attention is O(N²) in sequence length. MobiuAttention is *
 ```python
 from mobiu_q.experimental import MobiuBlock
 
+# No license key needed - runs locally!
 class LongContextLM(nn.Module):
     def __init__(self, vocab, d=512, h=8, layers=6):
         super().__init__()
@@ -349,8 +396,10 @@ Instead of O(N²) pairwise attention, we track state with O(N) complexity.
 
 ## License
 
-Free tier: 20 API calls/month (optimizer only)
-Pro tier: Unlimited - https://app.mobiu.ai
+| Tier | API Calls | Price | Get Started |
+|------|-----------|-------|-------------|
+| Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
+| Pro | Unlimited | Contact us | [Contact](ai@mobiu.ai) |
 
 **Note:** MobiuAttention runs locally, no API calls required.
 
@@ -359,7 +408,7 @@ Pro tier: Unlimited - https://app.mobiu.ai
 ## Links
 
 - [PyPI](https://pypi.org/project/mobiu-q/)
-- [GitHub Issues](https://github.com/mobiu-ai/mobiu-q/issues)
+- [GitHub](https://github.com/mobiuai/mobiu-q/)
 
 ---
 
@@ -370,6 +419,6 @@ Pro tier: Unlimited - https://app.mobiu.ai
   title={Mobiu-Q: Soft Algebra for Optimization and Attention},
   author={Mobiu Technologies},
   year={2026},
-  url={https://github.com/mobiu-ai/mobiu-q}
+  url={https://mobiu.ai}
 }
 ```

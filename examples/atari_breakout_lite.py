@@ -212,7 +212,7 @@ def train_atari(
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 10)
-                optimizer.step(loss=loss.item())
+                optimizer.step(loss.item())
             
             if total_steps % target_update == 0:
                 target_net.load_state_dict(policy_net.state_dict())
