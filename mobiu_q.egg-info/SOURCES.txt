@@ -1,6 +1,5 @@
 README.md
 pyproject.toml
-setup.py
 mobiu_q/__init__.py
 mobiu_q/cli.py
 mobiu_q/core.py

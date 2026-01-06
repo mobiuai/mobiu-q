@@ -4,17 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "3.1.0"
-description = "Soft Algebra Optimizer for Quantum & Complex Optimization"
+version = "3.1.2"
+description = "Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs"
 readme = "README.md"
 license = {text = "Proprietary"}
 authors = [
-    {name = "Mobiu Technologies", email = "ai@mobiu.ai"}
+    {name = "Mobiu Technologies", email = "support@mobiu.ai"}
 ]
-keywords = ["quantum", "optimization", "VQE", "QAOA", "machine-learning"]
+keywords = [
+    "quantum", 
+    "optimization", 
+    "VQE", 
+    "QAOA", 
+    "machine-learning",
+    "deep-learning",
+    "pytorch",
+    "optimizer",
+    "attention",
+    "transformer",
+    "linear-attention",
+    "long-context",
+    "llm",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Programming Language :: Python :: 3",
@@ -28,21 +43,27 @@ requires-python = ">=3.8"
 dependencies = [
     "numpy>=1.21.0",
     "requests>=2.25.0",
+    "torch>=1.9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov",
+    "black>=21.0",
+    "isort>=5.0",
+    "flake8>=3.9",
 ]
-full = [
-    "scipy>=1.7.0",
+quantum = [
     "qiskit>=0.40.0",
+    "pennylane>=0.28.0",
 ]
 
 [project.urls]
-Homepage = "https://app.mobiu.ai"
-Documentation = "https://pypi.org/project/mobiu-q/"
+Homepage = "https://mobiu.ai"
+Documentation = "https://docs.mobiu.ai"
+Repository = "https://github.com/mobiu-ai/mobiu-q"
+"Bug Tracker" = "https://github.com/mobiu-ai/mobiu-q/issues"
 
 [project.scripts]
 mobiu-q = "mobiu_q.cli:main"

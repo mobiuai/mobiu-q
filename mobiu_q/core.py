@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.1.0 - Frustration Engine for Quantum
+Version: 3.1.2 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -354,6 +354,21 @@ class MobiuOptimizer:
         if hasattr(self._backend, 'zero_grad'):
             self._backend.zero_grad()
     
+    def set_metric(self, metric: float):
+        """
+        Store metric for next step() call.
+    
+        Use this for frameworks that call step() without arguments (e.g., Stable-Baselines3).
+    
+        Example:
+            # In callback when episode ends:
+            optimizer.set_metric(episode_return)
+        
+            # Framework calls step() without args - uses stored metric
+        """
+        if hasattr(self._backend, 'set_metric'):
+            self._backend.set_metric(metric)
+
     def end(self):
         """End optimization session."""
         self._backend.end()
@@ -487,6 +502,7 @@ class _MobiuPyTorchBackend:
         self._local_step_count = 0
         self._accumulated_metric = 0.0
         self._metric_count = 0
+        self._stored_metric = None
         
         # Start session
         self._start_session()
@@ -544,10 +560,18 @@ class _MobiuPyTorchBackend:
             if self.verbose:
                 print(f"⚠️  Cannot connect to Mobiu-Q: {e}. Using constant LR.")
     
+    def set_metric(self, metric: float):
+        """Store metric for next step() call (for frameworks like SB3)."""
+        self._stored_metric = metric
+
     def step(self, metric: float = None):
         """
         metric: The Loss (minimize) or Reward (maximize).
         """
+        # Use stored metric if none provided (for SB3 compatibility)
+        if metric is None:
+            metric = self._stored_metric
+    
         self._local_step_count += 1
         
         # 1. FRUSTRATION ENGINE (Client-Side Logic)
@@ -1411,7 +1435,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.1.0"
+__version__ = "3.1.2"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

@@ -1,4 +1,4 @@
-# Mobiu-Q v3.1.0
+# Mobiu-Q v3.1.2
 
 **Soft Algebra for Optimization & Attention**
 
@@ -93,7 +93,7 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 | Tier | API Calls | Price |
 |------|-----------|-------|
 | Free | 20/month | $0 |
-| Pro | Unlimited | $19 |
+| Pro | Unlimited | $19/month |
 
 **Note:** MobiuAttention runs locally and does NOT require a license key.
 
@@ -410,6 +410,63 @@ for episode in range(500):
 opt.end()
 ```
 
+### Stable-Baselines3 (PPO, SAC, etc.)
+
+SB3 calls `optimizer.step()` internally without arguments. Use `set_metric()` to provide the reward:
+```python
+import gymnasium as gym
+import numpy as np
+from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import BaseCallback
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+class MobiuSB3Callback(BaseCallback):
+    """Callback that integrates Mobiu-Q with SB3."""
+    
+    def __init__(self, method="adaptive", use_soft_algebra=True, verbose=0):
+        super().__init__(verbose=verbose)
+        self.method = method
+        self.use_soft_algebra = use_soft_algebra
+        self._mobiu = None
+        self._ep_returns = []
+    
+    def _on_training_start(self):
+        base_opt = self.model.policy.optimizer
+        self._mobiu = MobiuOptimizer(
+            base_opt,
+            license_key=LICENSE_KEY,
+            method=self.method,
+            use_soft_algebra=self.use_soft_algebra,
+            maximize=True,
+            sync_interval=50,
+            verbose=True
+        )
+        # Replace SB3's optimizer
+        self.model.policy.optimizer = self._mobiu
+    
+    def _on_step(self):
+        for info in self.locals.get("infos", []):
+            if "episode" in info:
+                ep_return = info["episode"]["r"]
+                self._ep_returns.append(ep_return)
+                # Update metric with rolling average
+                recent = self._ep_returns[-4:]
+                self._mobiu.set_metric(np.mean(recent))
+        return True
+    
+    def _on_training_end(self):
+        if self._mobiu:
+            self._mobiu.end()
+
+
+# Usage
+env = gym.make("LunarLander-v3")
+model = PPO("MlpPolicy", env, learning_rate=3e-4, verbose=0)
+model.learn(total_timesteps=200_000, callback=MobiuSB3Callback())
+```
+
 ---
 
 ## Base Optimizers
@@ -658,7 +715,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | Tier | API Calls | Price | Get Started |
 |------|-----------|-------|-------------|
 | Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
-| Pro | Unlimited | $19 | [Get one](https://app.mobiu.ai) |
+| Pro | Unlimited | $19/month | [Get one](https://app.mobiu.ai) |
 
 **Note:** MobiuAttention runs locally, no API calls required.
 

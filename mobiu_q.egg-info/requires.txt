@@ -1,10 +1,14 @@
 numpy>=1.21.0
 requests>=2.25.0
+torch>=1.9.0
 
 [dev]
 pytest>=7.0
 pytest-cov
+black>=21.0
+isort>=5.0
+flake8>=3.9
 
-[full]
-scipy>=1.7.0
+[quantum]
 qiskit>=0.40.0
+pennylane>=0.28.0
