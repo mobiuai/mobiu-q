@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.1.2 - Frustration Engine for Quantum
+Version: 3.1.3 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -427,6 +427,11 @@ class MobiuOptimizer:
         return self._backend.lr_history
 
     @property
+    def warp_history(self) -> List[float]:
+        """Gradient warp factor history."""
+        return getattr(self._backend, 'warp_history', [])
+
+    @property
     def sync_interval(self) -> Optional[int]:
         """Get current sync interval (PyTorch mode only)."""
         if hasattr(self._backend, 'sync_interval'):
@@ -453,6 +458,20 @@ class MobiuOptimizer:
             return self._backend.available_optimizers
         return AVAILABLE_OPTIMIZERS
     
+    @property
+    def param_groups(self):
+        """Expose param_groups for framework compatibility (e.g., SB3)."""
+        if hasattr(self._backend, 'optimizer'):
+            return self._backend.optimizer.param_groups
+        return []
+    
+    @property
+    def state(self):
+        """Expose optimizer state for framework compatibility."""
+        if hasattr(self._backend, 'optimizer'):
+            return self._backend.optimizer.state
+        return {}
+
     def __del__(self):
         try:
             self.end()
@@ -495,6 +514,7 @@ class _MobiuPyTorchBackend:
         # Tracking
         self.energy_history = []
         self.lr_history = []
+        self.warp_history = []
         self._last_energy = None
         self._usage_info = None
         self._available_optimizers = AVAILABLE_OPTIMIZERS
@@ -617,13 +637,24 @@ class _MobiuPyTorchBackend:
                     'session_id': self.session_id,
                     'params': [0.0], 
                     'gradient': [0.0],
-                    'energy': energy_to_send # <--- Corrected Value
+                    'energy': energy_to_send
                 }, timeout=1.0)
                 
-                # Cloud suggests a new BASELINE LR (based on landscape difficulty)
                 data = r.json()
-                if data.get('success') and 'adaptive_lr' in data:
-                    self.base_lr = data['adaptive_lr'] 
+                if data.get('success'):
+                    # Update base LR from Soft Algebra
+                    if 'adaptive_lr' in data:
+                        self.base_lr = data['adaptive_lr']
+                    
+                    # NEW: Apply gradient warping from server
+                    warp_factor = data.get('warp_factor', 1.0)
+                    self.warp_history.append(warp_factor)
+                    
+                    if warp_factor != 1.0:
+                        for pg in self.optimizer.param_groups:
+                            for param in pg['params']:
+                                if param.grad is not None:
+                                    param.grad.data.mul_(warp_factor)
                     
             except: pass
             
@@ -641,6 +672,7 @@ class _MobiuPyTorchBackend:
         """Reset for new run."""
         self.energy_history.clear()
         self.lr_history.clear()
+        self.warp_history.clear()  # NEW
         self._last_energy = None
     
         # Reset sync counters
@@ -1435,7 +1467,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.1.2"
+__version__ = "3.1.3"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

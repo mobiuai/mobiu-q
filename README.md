@@ -1,4 +1,4 @@
-# Mobiu-Q v3.1.2
+# Mobiu-Q v3.1.3
 
 **Soft Algebra for Optimization & Attention**
 
@@ -53,6 +53,16 @@ for batch in dataloader:
     opt.step(loss.item())  # Pass loss for Soft Algebra
 
 opt.end()  # Important: release resources
+```
+
+### Monitoring Training
+```python
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
+# ... training ...
+
+# Track metrics
+print(opt.lr_history)    # Learning rates over time
+print(opt.warp_history)  # Gradient warp factors (new in v3.1.3)
 ```
 
 ### MobiuAttention (🧪 Experimental)
