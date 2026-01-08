@@ -1,4 +1,4 @@
-# Mobiu-Q v3.1.3
+# Mobiu-Q v3.1.4
 
 **Soft Algebra for Optimization & Attention**
 
@@ -121,24 +121,43 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 
 ### Benchmarks
 
+#### Reinforcement Learning & Trading
+
 | Domain                  | Improvement | Win Rate | p-value |
 |-------------------------|-------------|----------|---------|
-| Crypto Trading 🆕       | **+56% profit** | **100%** | **<0.001** |
+| Crypto Trading          | **+56%** profit | 100% | <0.001  |
 | LunarLander-v3          | +128%       | 97%      | <0.001  |
 | MuJoCo InvertedPendulum | +111%       | 100%     | <0.001  |
+
+#### Quantum Computing
+
+| Domain                  | Improvement | Win Rate | p-value |
+|-------------------------|-------------|----------|---------|
 | VQE H₂ (FakeFez)        | +52%        | 100%     | <0.001  |
 | QAOA MaxCut             | +45%        | 95%      | <0.001  |
 
-#### Crypto Trading Details
+#### Noisy & Distributed Learning 🆕
 
-Tested on synthetic crypto market with regime switching (bull/bear), flash crashes, and high volatility:
+These domains have **systematic gradient bias** - exactly where Soft Algebra excels:
 
-| Metric | Adam Baseline | Mobiu Optimizer |
-|--------|---------------|-----------------|
-| Profit | -0.9% | **+55.9%** |
-| Episode Return | -0.17 | **+0.46** |
+| Domain              | Improvement | Win Rate | p-value | Bias Source |
+|---------------------|-------------|----------|---------|-------------|
+| Federated Learning  | **+67%**    | 100%     | <0.001  | Non-IID client data |
+| Imbalanced Data     | **+52%**    | 100%     | <0.001  | Majority class dominates |
+| Sim-to-Real         | **+47%**    | 100%     | <0.001  | Simulator ≠ reality |
+| Noisy Labels        | **+40%**    | 100%     | <0.001  | Systematic mislabeling |
 
-*500 episodes × 10 seeds, p < 0.001*
+*All tests: 10 seeds, same energy & gradient for both, only `use_soft_algebra` differs*
+
+### Why Soft Algebra Works Here
+
+In these domains, the **gradient is systematically biased**:
+- Federated: Each client sees different data distribution
+- Imbalanced: Gradient dominated by majority class
+- Sim-to-Real: Simulator has wrong physics parameters
+- Noisy Labels: Labels consistently confused (e.g., 3↔8)
+
+Soft Algebra detects the gap between gradient direction and actual loss improvement, then corrects for it.
 
 ### Maximize vs Minimize
 
@@ -180,6 +199,149 @@ opt_off = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, use_soft_algebra=Fal
 ---
 
 ## Examples by Domain
+
+### Federated Learning 🆕
+
+```python
+import numpy as np
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+# Simulate federated aggregation with non-IID clients
+class FederatedTrainer:
+    def __init__(self, n_clients=10, non_iid_strength=0.5):
+        self.n_clients = n_clients
+        self.non_iid = non_iid_strength
+        # Each client has biased local data
+        self.client_biases = [np.random.randn(dim) * non_iid_strength 
+                             for _ in range(n_clients)]
+    
+    def aggregate_gradients(self, params, sampled_clients):
+        """Aggregate gradients from subset of clients (FedAvg style)"""
+        grads = []
+        for c in sampled_clients:
+            # Each client's gradient is biased by their local data
+            local_grad = compute_gradient(params) + self.client_biases[c]
+            grads.append(local_grad)
+        return np.mean(grads, axis=0)
+
+# Mobiu-Q handles the systematic bias from non-IID aggregation
+params = np.random.randn(100)
+opt = MobiuOptimizer(
+    params,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=0.01
+)
+
+for round in range(100):
+    # Sample random clients (realistic FL scenario)
+    clients = np.random.choice(n_clients, size=5, replace=False)
+    gradient = trainer.aggregate_gradients(params, clients)
+    loss = compute_global_loss(params)
+    
+    params = opt.step(params, gradient, loss)
+
+opt.end()
+```
+
+### Imbalanced Data Classification 🆕
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+# Dataset with 90% class 0, 10% class 1 (fraud detection, medical diagnosis)
+train_loader = create_imbalanced_loader(imbalance_ratio=0.9)
+
+model = FraudDetector()
+base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard"
+)
+
+for batch in train_loader:
+    # Gradient dominated by majority class
+    loss = criterion(model(batch))
+    loss.backward()
+    
+    # Soft Algebra corrects for class imbalance bias
+    opt.step(loss.item())
+
+opt.end()
+```
+
+### Sim-to-Real Robotics 🆕
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+# Policy trained in simulator, deployed in real world
+policy = RobotPolicy()
+base_opt = torch.optim.Adam(policy.parameters(), lr=0.0003)
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    maximize=True
+)
+
+for episode in range(1000):
+    # Gradient from SIMULATOR (biased - wrong friction, mass, etc.)
+    sim_loss = run_simulator_episode(policy)
+    sim_loss.backward()
+    
+    # Periodically evaluate in REAL environment
+    if episode % 10 == 0:
+        real_reward = run_real_episode(policy)
+    
+    # Soft Algebra uses real reward to correct simulator bias
+    opt.step(real_reward)
+
+opt.end()
+```
+
+### Noisy Labels 🆕
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+
+# Dataset with systematic label noise (crowdsourced, OCR errors)
+# e.g., "3" often mislabeled as "8", "cat" confused with "dog"
+train_loader = create_noisy_label_loader(noise_rate=0.3)
+
+model = Classifier()
+base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard"
+)
+
+for batch_x, noisy_labels in train_loader:
+    # Gradient points toward WRONG targets due to label noise
+    loss = criterion(model(batch_x), noisy_labels)
+    loss.backward()
+    
+    # Validate on clean held-out set
+    clean_loss = evaluate_clean(model)
+    
+    # Soft Algebra detects mismatch and corrects
+    opt.step(clean_loss)
+
+opt.end()
+```
 
 ### Reinforcement Learning (REINFORCE)
 
@@ -567,6 +729,10 @@ Different optimizers work better for different problems:
 | RL / Trading | `Momentum` |
 | Drug Discovery | `AMSGrad` |
 | Large Batch | `LAMB` |
+| Federated Learning | `Adam` |
+| Imbalanced Data | `Adam` |
+| Sim-to-Real | `Adam` + `adaptive` |
+| Noisy Labels | `Adam` |
 
 ```python
 LICENSE_KEY = "your-license-key-here"
@@ -620,6 +786,8 @@ base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
 | **Drug Discovery** | BCE loss unstable | Use `AMSGrad` + `standard` method |
 | **Crypto/RL** | High variance | Use `Momentum` + `adaptive` method |
 | **QAOA** | Local minima | Use `NAdam` + `deep` method |
+| **Federated** | Non-IID variance | Use `Adam` + `standard` + LR=0.01 |
+| **Imbalanced** | Majority bias | Use `Adam` + `standard` + LR=0.01 |
 
 ---
 
@@ -717,6 +885,10 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_fakefez_h2.py` | VQE | H₂ molecule on FakeFez |
 | `test_fakefez_lih.py` | VQE | LiH molecule |
 | `test_fakefez_qaoa.py` | QAOA | MaxCut optimization |
+| `test_federated_fair.py` | FL | Federated learning benchmark |
+| `test_noisy_labels_fair.py` | Noisy | Noisy labels benchmark |
+| `test_sim_to_real_fair.py` | Robotics | Sim-to-real benchmark |
+| `test_imbalanced_fair.py` | Classification | Imbalanced data benchmark |
 
 ---
 
