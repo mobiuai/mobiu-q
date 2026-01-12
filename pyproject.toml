@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "3.2.4"
+version = "3.2.5"
 description = "Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs"
 readme = "README.md"
 license = {text = "Proprietary"}
