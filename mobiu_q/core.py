@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.2.5 - Frustration Engine for Quantum
+Version: 3.2.6 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -321,7 +321,6 @@ class MobiuOptimizer:
                 method=method,
                 mode=mode,
                 use_soft_algebra=use_soft_algebra,
-                maximize=maximize,
                 verbose=verbose,
                 **kwargs
             )
@@ -1121,9 +1120,6 @@ class MobiuQCore:
                 energy = energy_fn(params)
         else:
             gradient = gradient_or_fn
-            # Flip gradient for maximization (RL sends ascent direction)
-            if self.maximize:
-                gradient = -gradient
             if energy is None:
                 raise ValueError("energy is required when providing gradient array")
     
@@ -1145,7 +1141,7 @@ class MobiuQCore:
         
         try:
             # Retry loop for rate limiting
-            energy_to_send = -energy if self.maximize else energy
+            energy_to_send = energy
             for attempt in range(3):
                 response = requests.post(
                     self.api_endpoint,
@@ -1471,7 +1467,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.2.4"
+__version__ = "3.2.6"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
