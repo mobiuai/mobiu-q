@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-FAIR TEST: Imbalanced Data with Mobiu-Q API
+FAIR TEST: Imbalanced Data with Mobiu-Q AUTO Mode
 ================================================================================
 Same methodology as test_fakefez_vqe.py:
 - Both use REAL API
@@ -14,6 +14,8 @@ Imbalanced Data bias source:
 - Gradient dominated by majority class
 - Model biased toward predicting majority
 - Common in fraud detection, medical diagnosis, anomaly detection
+
+AUTO MODE: Automatically selects best Soft Algebra mode (boost/dampen/off)
 ================================================================================
 """
 
@@ -26,7 +28,7 @@ from dataclasses import dataclass
 # ============================================================
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "YOOR_KEY_HERE"
+LICENSE_KEY = "YOUR_LICENSE_HERE"
 
 # Test parameters
 N_SEEDS = 10
@@ -35,7 +37,7 @@ DIM = 20
 N_CLASSES = 4
 IMBALANCE_RATIO = 0.9  # 90% samples from class 0
 LR = 0.01
-METHOD = "standard"
+METHOD = "standard"  
 BASE_OPTIMIZER = "Adam"
 
 
@@ -188,7 +190,7 @@ def run_optimizer(use_soft_algebra: bool, problem: ImbalancedDataProblem,
 
 def main():
     print("=" * 70)
-    print("⚖️  IMBALANCED DATA - FAIR A/B TEST")
+    print("⚖️  IMBALANCED DATA - FAIR A/B TEST (AUTO MODE)")
     print("=" * 70)
     print(f"Method: {METHOD} | Optimizer: {BASE_OPTIMIZER} | LR: {LR}")
     print(f"Classes: {N_CLASSES} | Imbalance: {IMBALANCE_RATIO*100:.0f}% majority | Steps: {N_STEPS}")
@@ -198,6 +200,7 @@ def main():
     print("Energy = balanced loss, Gradient = imbalanced.")
     print("Both optimizers see SAME energy and SAME gradient.")
     print("Only difference: use_soft_algebra = True vs False")
+    print("AUTO mode selects best strategy (boost/dampen/off)")
     print("=" * 70)
     
     # Create problem (fixed structure)

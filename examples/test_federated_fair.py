@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-FAIR TEST: Federated Learning with Mobiu-Q API
+FAIR TEST: Federated Learning with Mobiu-Q AUTO Mode
 ================================================================================
 Same methodology as test_fakefez_vqe.py:
 - Both use REAL API
@@ -12,6 +12,8 @@ Same methodology as test_fakefez_vqe.py:
 Federated Learning bias source:
 - Multiple clients with non-IID data distributions
 - Aggregated gradients have systematic bias from client heterogeneity
+
+AUTO MODE: Automatically selects best Soft Algebra mode (boost/dampen/off)
 ================================================================================
 """
 
@@ -24,7 +26,7 @@ from dataclasses import dataclass
 # ============================================================
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "YOUR_KEY_HERE"
+LICENSE_KEY = "YOUR_LICENSE_HERE"
 
 # Test parameters
 N_SEEDS = 10
@@ -32,8 +34,8 @@ N_STEPS = 80
 DIM = 20
 N_CLIENTS = 10
 NON_IID_STRENGTH = 0.8  # How different each client's data is
-LR = 0.01  # Same for both!
-METHOD = "standard"
+LR = 0.01
+METHOD = "standard"  
 BASE_OPTIMIZER = "Adam"
 
 
@@ -97,7 +99,7 @@ class FederatedProblem:
 
 
 # ============================================================
-# API RUNNER (same pattern as test_fakefez_vqe.py)
+# API RUNNER
 # ============================================================
 
 def run_optimizer(use_soft_algebra: bool, problem: FederatedProblem, 
@@ -176,7 +178,7 @@ def run_optimizer(use_soft_algebra: bool, problem: FederatedProblem,
 
 def main():
     print("=" * 70)
-    print("🌐 FEDERATED LEARNING - FAIR A/B TEST")
+    print("🌐 FEDERATED LEARNING - FAIR A/B TEST (AUTO MODE)")
     print("=" * 70)
     print(f"Method: {METHOD} | Optimizer: {BASE_OPTIMIZER} | LR: {LR}")
     print(f"Clients: {N_CLIENTS} | Non-IID: {NON_IID_STRENGTH} | Steps: {N_STEPS}")
@@ -184,6 +186,7 @@ def main():
     print()
     print("Both optimizers see SAME energy and SAME gradient.")
     print("Only difference: use_soft_algebra = True vs False")
+    print("AUTO mode selects best strategy (boost/dampen/off)")
     print("=" * 70)
     
     # Create problem (fixed structure)

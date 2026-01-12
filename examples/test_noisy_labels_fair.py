@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-FAIR TEST: Noisy Labels with Mobiu-Q API
+FAIR TEST: Noisy Labels with Mobiu-Q AUTO Mode
 ================================================================================
 Same methodology as test_fakefez_vqe.py:
 - Both use REAL API
@@ -14,6 +14,8 @@ Noisy Labels bias source:
 - Certain classes consistently confused with others
 - Gradient points toward wrong targets
 - Common in real data: OCR confuses 3↔8, medical images, crowdsourced labels
+
+AUTO MODE: Automatically selects best Soft Algebra mode (boost/dampen/off)
 ================================================================================
 """
 
@@ -26,7 +28,7 @@ from dataclasses import dataclass
 # ============================================================
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "YOUR_KEY_HERE"
+LICENSE_KEY = "YOUR_LICENSE_HERE"
 
 # Test parameters
 N_SEEDS = 10
@@ -35,7 +37,7 @@ DIM = 20
 N_CLASSES = 5
 NOISE_RATE = 0.3  # 30% of labels are wrong
 LR = 0.01
-METHOD = "standard"
+METHOD = "standard"  
 BASE_OPTIMIZER = "Adam"
 
 
@@ -192,7 +194,7 @@ def run_optimizer(use_soft_algebra: bool, problem: NoisyLabelsProblem,
 
 def main():
     print("=" * 70)
-    print("🏷️  NOISY LABELS - FAIR A/B TEST")
+    print("🏷️  NOISY LABELS - FAIR A/B TEST (AUTO MODE)")
     print("=" * 70)
     print(f"Method: {METHOD} | Optimizer: {BASE_OPTIMIZER} | LR: {LR}")
     print(f"Classes: {N_CLASSES} | Noise Rate: {NOISE_RATE*100:.0f}% | Steps: {N_STEPS}")
@@ -201,6 +203,7 @@ def main():
     print("Systematic label confusion: class i → class (i+1)")
     print("Both optimizers see SAME energy and SAME gradient.")
     print("Only difference: use_soft_algebra = True vs False")
+    print("AUTO mode selects best strategy (boost/dampen/off)")
     print("=" * 70)
     
     # Create problem (fixed structure)
