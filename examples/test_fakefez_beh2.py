@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q REAL TEST - FakeFez VQE for BeH₂ (Turbo Batched)
+MOBIU-Q REAL TEST - FakeFez VQE for BeH₂
 ================================================================================
 """
 
 import numpy as np
-from scipy.stats import wilcoxon
-from datetime import datetime
 import json
 import warnings
 warnings.filterwarnings('ignore')
@@ -18,26 +16,24 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_aer import AerSimulator
 from qiskit.primitives import BackendEstimatorV2
 
-# Robust Import
 try:
     from qiskit_ibm_runtime.fake_provider import FakeFezV2 as FakeBackend
 except ImportError:
     try:
         from qiskit_ibm_runtime.fake_provider import FakeFez as FakeBackend
     except ImportError:
-        print("⚠️ FakeFez not found, using GenericBackendV2")
         from qiskit.providers.fake_provider import GenericBackendV2
         FakeBackend = lambda: GenericBackendV2(num_qubits=127)
 
 from mobiu_q import MobiuQCore
 
-LICENSE_KEY = "YOUR_LICENCE"
+LICENSE_KEY = "YOUR_KEY"
 NUM_STEPS = 60
 NUM_SEEDS = 5
 NUM_SHOTS = 4096
 C_SHIFT = 0.1
+METHOD = "standard"
 
-# Setup BeH2
 backend = AerSimulator.from_backend(FakeBackend())
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
@@ -57,21 +53,21 @@ isa_ops = hamiltonian.apply_layout(isa_ansatz.layout)
 num_params = ansatz.num_parameters
 
 def get_batched_energy_and_gradient(params, delta):
-    pub_current = (isa_ansatz, isa_ops, params)
-    pub_plus = (isa_ansatz, isa_ops, params + C_SHIFT * delta)
-    pub_minus = (isa_ansatz, isa_ops, params - C_SHIFT * delta)
-    job = estimator.run([pub_current, pub_plus, pub_minus])
+    job = estimator.run([
+        (isa_ansatz, isa_ops, params),
+        (isa_ansatz, isa_ops, params + C_SHIFT * delta),
+        (isa_ansatz, isa_ops, params - C_SHIFT * delta)
+    ])
     results = job.result()
     grad = (float(results[1].data.evs) - float(results[2].data.evs)) / (2 * C_SHIFT) * delta
     return float(results[0].data.evs), grad
 
 def main():
     print("=" * 70)
-    print("🧬 MOBIU-Q REAL TEST - FakeFez VQE BeH₂ (Turbo Batched)")
+    print("🧬 MOBIU-Q - FakeFez VQE BeH₂")
     print("=" * 70)
     
-    baseline_results = []
-    mobiu_results = []
+    baseline_results, mobiu_results = [], []
     
     for seed in range(NUM_SEEDS):
         print(f"\n  Seed {seed + 1}/{NUM_SEEDS}")
@@ -80,9 +76,8 @@ def main():
         np.random.seed(seed * 1000)
         spsa_deltas = [np.random.choice([-1, 1], size=num_params) for _ in range(NUM_STEPS)]
         
-        # Baseline
         params = init_params.copy()
-        baseline_opt = MobiuQCore(LICENSE_KEY, method='standard', mode='hardware', use_soft_algebra=False, verbose=False)
+        baseline_opt = MobiuQCore(LICENSE_KEY, method=METHOD, mode='hardware', use_soft_algebra=False, verbose=False)
         b_best = float('inf')
         for step in range(NUM_STEPS):
             e, g = get_batched_energy_and_gradient(params, spsa_deltas[step])
@@ -90,9 +85,8 @@ def main():
             b_best = min(b_best, e)
         baseline_opt.end()
         
-        # Mobiu
         params = init_params.copy()
-        mobiu_opt = MobiuQCore(LICENSE_KEY, method='standard', mode='hardware', use_soft_algebra=True, verbose=False)
+        mobiu_opt = MobiuQCore(LICENSE_KEY, method=METHOD, mode='hardware', use_soft_algebra=True, verbose=False)
         m_best = float('inf')
         for step in range(NUM_STEPS):
             e, g = get_batched_energy_and_gradient(params, spsa_deltas[step])
@@ -100,8 +94,7 @@ def main():
             m_best = min(m_best, e)
         mobiu_opt.end()
         
-        b_gap = abs(b_best - exact_energy)
-        m_gap = abs(m_best - exact_energy)
+        b_gap, m_gap = abs(b_best - exact_energy), abs(m_best - exact_energy)
         winner = "✅ Mobiu" if m_gap < b_gap else "❌ Baseline"
         print(f"    Baseline: {b_best:.4f} (gap={b_gap:.4f}) | Mobiu: {m_best:.4f} (gap={m_gap:.4f}) → {winner}")
         baseline_results.append(b_best)
@@ -112,7 +105,7 @@ def main():
     imp = (b_mean - m_mean) / b_mean * 100
     print(f"\n  Improvement: {imp:+.1f}%")
     with open('fakefez_beh2_results.json', 'w') as f:
-        json.dump({'molecule': 'BeH2', 'improvement': imp}, f)
+        json.dump({'molecule': 'BeH2', 'method': METHOD, 'improvement': imp}, f)
 
 if __name__ == "__main__":
     main()

@@ -23,7 +23,7 @@ from qiskit_aer import AerSimulator
 from qiskit_ibm_runtime.fake_provider import FakeFez
 
 API_URL = "https://us-central1-mobiu-q.cloudfunctions.net/mobiu_q_step"
-LICENSE_KEY = "YOUR_LICENCE"  # Replace with your key
+LICENSE_KEY = "YOUR_KEY"
 
 # ==============================================================================
 # SETTINGS
@@ -35,6 +35,7 @@ N_STEPS = 100
 N_SEEDS = 10
 SHOTS = 4096
 C_SHIFT = 0.1
+METHOD = "deep"  
 
 # Create random MaxCut graph
 np.random.seed(42)
@@ -49,6 +50,7 @@ print("=" * 80)
 print(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
 print(f"Graph: {N_QUBITS} qubits, {len(EDGES)} edges: {EDGES}")
 print(f"Settings: p={P}, steps={N_STEPS}, seeds={N_SEEDS}, shots={SHOTS}")
+print(f"Method: {METHOD}")
 print("=" * 80)
 
 # Setup FakeFez
@@ -139,14 +141,15 @@ def spsa_gradient(params, delta):
 def run_optimizer(name, use_soft_algebra, seed, spsa_deltas):
     """Run optimizer with pre-generated SPSA deltas for fair comparison"""
     
-    # Start session - CORRECT API FORMAT
+    # Start session
     r = requests.post(API_URL, json={
         'action': 'start',
         'license_key': LICENSE_KEY,
-        'method': 'deep',          
-        'mode': 'hardware',        
+        'method': METHOD,
+        'mode': 'hardware',
+        'base_optimizer': 'SGD',
         'use_soft_algebra': use_soft_algebra,
-        'base_lr': 0.1             # QAOA default
+        'base_lr': 0.1
     }, timeout=10)
     
     data = r.json()

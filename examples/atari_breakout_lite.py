@@ -1,17 +1,9 @@
 # atari_breakout_lite.py
 """
-בדיקת Atari Breakout - גרסה קלה ל-Colab
-- Replay buffer קטן יותר (50K במקום 100K)
-- פחות episodes
-- ניקוי זיכרון בין ריצות
+Atari Breakout - Lite Version
 """
 
-# %% Cell 1: התקנות
-# !pip install gymnasium[atari] ale-py autorom
-# !AutoROM --accept-license
-# !pip install mobiu-q opencv-python
-
-# %% Cell 2: Imports
+# %% Cell 1: Imports
 import gc
 import ale_py
 import gymnasium as gym
@@ -31,20 +23,23 @@ warnings.filterwarnings('ignore')
 
 from mobiu_q import MobiuOptimizer
 
-print("🎮 Atari Breakout - Lite Version")
+print("🎮 Atari Breakout")
 print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"🔧 PyTorch: {torch.__version__}")
 print(f"🖥️  GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# %% Cell 3: CNN Architecture (smaller)
+LICENSE_KEY = "YOUR_KEY"
+METHOD = "adaptive"  
+
+# %% Cell 2: CNN Architecture
 class AtariDQN(nn.Module):
     def __init__(self, n_actions):
         super().__init__()
-        self.conv1 = nn.Conv2d(4, 16, kernel_size=8, stride=4)  # 32->16
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)  # 64->32
-        self.fc1 = nn.Linear(32 * 9 * 9, 256)  # 512->256
+        self.conv1 = nn.Conv2d(4, 16, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
+        self.fc1 = nn.Linear(32 * 9 * 9, 256)
         self.fc2 = nn.Linear(256, n_actions)
     
     def forward(self, x):
@@ -55,7 +50,7 @@ class AtariDQN(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
-# %% Cell 4: Frame Processing
+# %% Cell 3: Frame Processing
 def preprocess_frame(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
@@ -77,7 +72,7 @@ class FrameStack:
         self.frames.append(frame)
         return np.stack(self.frames, axis=0)
 
-# %% Cell 5: Compact Replay Buffer
+# %% Cell 4: Replay Buffer
 class ReplayBuffer:
     def __init__(self, capacity):
         self.capacity = capacity
@@ -85,10 +80,8 @@ class ReplayBuffer:
         self.position = 0
     
     def push(self, state, action, reward, next_state, done):
-        # Store as uint8 to save memory
         state = state.astype(np.uint8)
         next_state = next_state.astype(np.uint8)
-        
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
         self.buffer[self.position] = (state, action, reward, next_state, done)
@@ -112,15 +105,8 @@ class ReplayBuffer:
         self.buffer = []
         self.position = 0
 
-# %% Cell 6: Training Function
-def train_atari(
-    use_soft_algebra=True,
-    num_episodes=200,
-    seed=42,
-    license_key="YOUR_KEY",
-    verbose=True
-):
-    # Clear memory
+# %% Cell 5: Training Function
+def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
     gc.collect()
     torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
@@ -140,14 +126,14 @@ def train_atari(
     base_opt = optim.Adam(policy_net.parameters(), lr=1e-4)
     optimizer = MobiuOptimizer(
         base_opt,
-        license_key=license_key,
-        method="adaptive",
+        license_key=LICENSE_KEY,
+        method=METHOD,
         use_soft_algebra=use_soft_algebra,
+        maximize=True,
         sync_interval=50,
         verbose=False
     )
     
-    # Smaller buffer
     buffer = ReplayBuffer(30000)
     frame_stack = FrameStack(k=4)
     
@@ -212,7 +198,7 @@ def train_atari(
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 10)
-                optimizer.step(loss.item())
+                optimizer.step(episode_reward)
             
             if total_steps % target_update == 0:
                 target_net.load_state_dict(policy_net.state_dict())
@@ -226,7 +212,6 @@ def train_atari(
     optimizer.end()
     env.close()
     
-    # Cleanup
     buffer.clear()
     del policy_net, target_net, buffer
     gc.collect()
@@ -234,8 +219,8 @@ def train_atari(
     
     return episode_rewards
 
-# %% Cell 7: Run Comparison
-def run_comparison(num_episodes=200, num_seeds=3, license_key="YOUR_KEY"):
+# %% Cell 6: Run Comparison
+def run_comparison(num_episodes=200, num_seeds=3):
     print("=" * 60)
     print("🎮 ATARI BREAKOUT - Mobiu-Q vs Adam")
     print("=" * 60)
@@ -245,29 +230,26 @@ def run_comparison(num_episodes=200, num_seeds=3, license_key="YOUR_KEY"):
     for seed in range(num_seeds):
         print(f"\n🌱 Seed {seed + 1}/{num_seeds}")
         
-        # Adam
         print("   Adam...")
-        r_adam = train_atari(False, num_episodes, seed*100, license_key)
+        r_adam = train_atari(False, num_episodes, seed*100)
         avg_adam = np.mean(r_adam[-50:])
         results['adam'].append(avg_adam)
         print(f"   Adam done: {avg_adam:.1f}")
         
-        # Mobiu
         print("   Mobiu-Q...")
-        r_mobiu = train_atari(True, num_episodes, seed*100, license_key)
+        r_mobiu = train_atari(True, num_episodes, seed*100)
         avg_mobiu = np.mean(r_mobiu[-50:])
         results['mobiu'].append(avg_mobiu)
         print(f"   Mobiu done: {avg_mobiu:.1f}")
     
-    # Stats
     adam = np.array(results['adam'])
     mobiu = np.array(results['mobiu'])
     
     print("\n" + "=" * 60)
     print("📊 RESULTS")
     print("=" * 60)
-    print(f"Adam:   {np.mean(adam):.1f} ± {np.std(adam):.1f}")
-    print(f"Mobiu:  {np.mean(mobiu):.1f} ± {np.std(mobiu):.1f}")
+    print(f"Adam:       {np.mean(adam):.1f} ± {np.std(adam):.1f}")
+    print(f"Mobiu: {np.mean(mobiu):.1f} ± {np.std(mobiu):.1f}")
     
     improvement = (np.mean(mobiu) - np.mean(adam)) / (abs(np.mean(adam)) + 1e-8) * 100
     wins = np.sum(mobiu > adam)
@@ -280,12 +262,6 @@ def run_comparison(num_episodes=200, num_seeds=3, license_key="YOUR_KEY"):
     
     return results
 
-# %% Cell 8: הרצה
-LICENSE_KEY = "EYOUR_KEY_HERE"
-
-# בדיקה קצרה - 200 episodes, 3 seeds (~1-2 שעות)
-results = run_comparison(
-    num_episodes=200,
-    num_seeds=3,
-    license_key=LICENSE_KEY
-)
+# %% Cell 7: Run
+if __name__ == "__main__":
+    results = run_comparison(num_episodes=200, num_seeds=3)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q REAL TEST - FakeFez VQE for H₂ (Turbo Batched)
+MOBIU-Q REAL TEST - FakeFez VQE for H₂
 ================================================================================
 Tests Mobiu-Q on H2 molecule with IBM FakeFez noise model.
 Uses BackendEstimatorV2 with EXPLICIT BATCHING for maximum speed (3x faster).
@@ -39,7 +39,6 @@ except ImportError:
     try:
         from qiskit_ibm_runtime.fake_provider import FakeFez as FakeBackend
     except ImportError:
-        # Fallback to generic if Fez is missing
         print("⚠️ FakeFez not found, using GenericBackendV2")
         from qiskit.providers.fake_provider import GenericBackendV2
         FakeBackend = lambda: GenericBackendV2(num_qubits=127)
@@ -51,12 +50,13 @@ from mobiu_q import MobiuQCore
 # CONFIGURATION
 # ============================================================
 
-LICENSE_KEY = "YOUR_LICENCE"
+LICENSE_KEY = "YOUR_KEY"
 
 NUM_STEPS = 60
 NUM_SEEDS = 5
 NUM_SHOTS = 4096
 C_SHIFT = 0.1  # SPSA shift
+METHOD = "standard"  
 
 # ============================================================
 # SETUP BACKEND & ESTIMATOR
@@ -89,13 +89,10 @@ def get_batched_energy_and_gradient(params, delta):
     Runs 3 circuits in ONE job for maximum throughput.
     Returns: (current_energy, gradient_estimate)
     """
-    # Create 3 sets of parameters: Current, Plus, Minus
-    # We measure current params too to get accurate history logging
     pub_current = (isa_ansatz, isa_ops, params)
     pub_plus = (isa_ansatz, isa_ops, params + C_SHIFT * delta)
     pub_minus = (isa_ansatz, isa_ops, params - C_SHIFT * delta)
     
-    # Run all 3 in parallel on the simulator
     job = estimator.run([pub_current, pub_plus, pub_minus])
     results = job.result()
     
@@ -103,7 +100,6 @@ def get_batched_energy_and_gradient(params, delta):
     e_plus = float(results[1].data.evs)
     e_minus = float(results[2].data.evs)
     
-    # Compute gradient
     grad = (e_plus - e_minus) / (2 * C_SHIFT) * delta
     
     return e_current, grad
@@ -114,9 +110,10 @@ def get_batched_energy_and_gradient(params, delta):
 
 def main():
     print("=" * 70)
-    print("🧬 MOBIU-Q REAL TEST - FakeFez VQE H₂ (Turbo Batched)")
+    print("🧬 MOBIU-Q REAL TEST - FakeFez VQE H₂")
     print("=" * 70)
     print(f"Steps: {NUM_STEPS} | Seeds: {NUM_SEEDS} | Shots: {NUM_SHOTS}")
+    print(f"Method: {METHOD}")
     print("Technique: Explicit Job Batching (3 circuits per job)")
     print("=" * 70)
     
@@ -134,44 +131,36 @@ def main():
         np.random.seed(seed * 1000)
         spsa_deltas = [np.random.choice([-1, 1], size=num_params) for _ in range(NUM_STEPS)]
         
-        # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
         # Baseline (use_soft_algebra=False)
-        # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
         params = init_params.copy()
         baseline_opt = MobiuQCore(
             license_key=LICENSE_KEY,
-            method='standard', mode='hardware', use_soft_algebra=False, verbose=False
+            method=METHOD, mode='hardware', use_soft_algebra=False, verbose=False
         )
         
         baseline_best = float('inf')
         for step in range(NUM_STEPS):
-            # 1. Calculate Gradient FAST (Batched)
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
-            
-            # 2. Update via Mobiu Client (Manual Gradient Mode)
             params = baseline_opt.step(params, grad, energy)
-            
             baseline_best = min(baseline_best, energy)
         
         baseline_opt.end()
         
-        # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
         # Mobiu-Q (use_soft_algebra=True)
-        # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
         params = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,
-            method='standard', mode='hardware', use_soft_algebra=True, verbose=False
+            method=METHOD, mode='hardware', use_soft_algebra=True, verbose=False
         )
         
         mobiu_best = float('inf')
         for step in range(NUM_STEPS):
-            # 1. Calculate Gradient FAST (Batched) with SAME delta
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
-            
-            # 2. Update via Mobiu Client
             params = mobiu_opt.step(params, grad, energy)
-            
             mobiu_best = min(mobiu_best, energy)
         
         mobiu_opt.end()
@@ -197,7 +186,7 @@ def main():
     print("=" * 70)
     
     with open('fakefez_h2_results.json', 'w') as f:
-        json.dump({'molecule': 'H2', 'improvement': imp, 'baseline': baseline_mean, 'mobiu': mobiu_mean}, f)
+        json.dump({'molecule': 'H2', 'method': METHOD, 'improvement': imp, 'baseline': baseline_mean, 'mobiu': mobiu_mean}, f)
 
 if __name__ == "__main__":
     main()

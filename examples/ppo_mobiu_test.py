@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-PPO from Scratch with Mobiu-Q Frustration Engine
+PPO from Scratch with Mobiu-Q
 ================================================================================
 Clean PPO implementation for LunarLander-v3 with fair A/B testing.
-
-Tests whether the Frustration Engine helps PPO (which is already more stable
-than REINFORCE).
 
 Usage:
     python ppo_mobiu_test.py
@@ -22,31 +19,28 @@ from torch.distributions import Categorical
 from scipy.stats import wilcoxon
 import os
 
-# Determinism
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.use_deterministic_algorithms(True)
 torch.set_num_threads(1)
 
-# Mobiu Import
 try:
     from mobiu_q import MobiuOptimizer
     HAS_MOBIU = True
 except ImportError:
     HAS_MOBIU = False
-    print("⚠️ mobiu-q not installed")
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
-LICENSE_KEY = "YOUR_KEY_HERE"
+LICENSE_KEY = "YOUR_KEY"
+METHOD = "adaptive"  
 ENV_NAME = "LunarLander-v3"
 
-# PPO Hyperparameters
 TOTAL_TIMESTEPS = 100_000
-STEPS_PER_UPDATE = 2048      # Collect this many steps before update
+STEPS_PER_UPDATE = 2048
 BATCH_SIZE = 64
-N_EPOCHS = 10                # PPO epochs per update
+N_EPOCHS = 10
 GAMMA = 0.99
 GAE_LAMBDA = 0.95
 CLIP_EPSILON = 0.2
@@ -54,10 +48,8 @@ LR = 3e-4
 ENT_COEF = 0.01
 VF_COEF = 0.5
 MAX_GRAD_NORM = 0.5
+NUM_SEEDS = 30
 
-# Test settings
-NUM_SEEDS = 10
-EVAL_EPISODES = 10
 
 # ============================================================
 # ACTOR-CRITIC NETWORK
@@ -66,16 +58,11 @@ EVAL_EPISODES = 10
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden=64):
         super().__init__()
-        # Shared backbone
         self.shared = nn.Sequential(
-            nn.Linear(obs_dim, hidden),
-            nn.Tanh(),
-            nn.Linear(hidden, hidden),
-            nn.Tanh()
+            nn.Linear(obs_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh()
         )
-        # Actor head
         self.actor = nn.Linear(hidden, act_dim)
-        # Critic head
         self.critic = nn.Linear(hidden, 1)
     
     def forward(self, x):
@@ -85,11 +72,10 @@ class ActorCritic(nn.Module):
     def get_action_and_value(self, x, action=None):
         logits, value = self(x)
         probs = Categorical(logits=logits)
-        
         if action is None:
             action = probs.sample()
-        
         return action, probs.log_prob(action), probs.entropy(), value.squeeze(-1)
+
 
 # ============================================================
 # ROLLOUT BUFFER
@@ -97,12 +83,8 @@ class ActorCritic(nn.Module):
 
 class RolloutBuffer:
     def __init__(self):
-        self.obs = []
-        self.actions = []
-        self.log_probs = []
-        self.rewards = []
-        self.dones = []
-        self.values = []
+        self.obs, self.actions, self.log_probs = [], [], []
+        self.rewards, self.dones, self.values = [], [], []
     
     def add(self, obs, action, log_prob, reward, done, value):
         self.obs.append(obs)
@@ -113,19 +95,12 @@ class RolloutBuffer:
         self.values.append(value)
     
     def clear(self):
-        self.obs = []
-        self.actions = []
-        self.log_probs = []
-        self.rewards = []
-        self.dones = []
-        self.values = []
+        self.obs, self.actions, self.log_probs = [], [], []
+        self.rewards, self.dones, self.values = [], [], []
     
     def compute_returns_and_advantages(self, last_value, gamma, gae_lambda):
-        """Compute GAE advantages and returns."""
-        advantages = []
-        returns = []
+        advantages, returns = [], []
         gae = 0
-        
         values = self.values + [last_value]
         
         for t in reversed(range(len(self.rewards))):
@@ -135,7 +110,6 @@ class RolloutBuffer:
             else:
                 delta = self.rewards[t] + gamma * values[t + 1] - values[t]
                 gae = delta + gamma * gae_lambda * gae
-            
             advantages.insert(0, gae)
             returns.insert(0, gae + values[t])
         
@@ -149,34 +123,28 @@ class RolloutBuffer:
             torch.tensor(self.values, dtype=torch.float32)
         )
 
+
 # ============================================================
 # PPO TRAINING
 # ============================================================
 
 def train_ppo(seed, use_mobiu=True):
-    """Train PPO agent with or without Mobiu."""
-    
-    # Set seeds
     torch.manual_seed(seed)
     np.random.seed(seed)
     
-    # Environment
     env = gym.make(ENV_NAME)
     env.reset(seed=seed)
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.n
     
-    # Model
     model = ActorCritic(obs_dim, act_dim)
-    
-    # Optimizer
     base_opt = torch.optim.Adam(model.parameters(), lr=LR, eps=1e-5)
     
     if use_mobiu and HAS_MOBIU:
         optimizer = MobiuOptimizer(
             base_opt,
             license_key=LICENSE_KEY,
-            method='adaptive',
+            method=METHOD,
             use_soft_algebra=True,
             maximize=True,
             sync_interval=50,
@@ -185,17 +153,14 @@ def train_ppo(seed, use_mobiu=True):
     else:
         optimizer = base_opt
     
-    # Training
     buffer = RolloutBuffer()
     obs, _ = env.reset()
     obs = torch.tensor(obs, dtype=torch.float32)
     
     episode_rewards = []
     current_episode_reward = 0
-    num_updates = 0
     
     for step in range(TOTAL_TIMESTEPS):
-        # Collect step
         with torch.no_grad():
             action, log_prob, _, value = model.get_action_and_value(obs)
         
@@ -213,27 +178,17 @@ def train_ppo(seed, use_mobiu=True):
             obs, _ = env.reset()
             obs = torch.tensor(obs, dtype=torch.float32)
         
-        # Update when buffer is full
         if len(buffer.obs) >= STEPS_PER_UPDATE:
-            num_updates += 1
-            
-            # Compute advantages
             with torch.no_grad():
                 _, _, _, last_value = model.get_action_and_value(obs)
             
-            advantages, returns = buffer.compute_returns_and_advantages(
-                last_value.item(), GAMMA, GAE_LAMBDA
-            )
+            advantages, returns = buffer.compute_returns_and_advantages(last_value.item(), GAMMA, GAE_LAMBDA)
             
-            # Convert to tensors
             b_obs, b_actions, b_log_probs, b_values = buffer.get_tensors()
             b_advantages = torch.tensor(advantages, dtype=torch.float32)
             b_returns = torch.tensor(returns, dtype=torch.float32)
-            
-            # Normalize advantages
             b_advantages = (b_advantages - b_advantages.mean()) / (b_advantages.std() + 1e-8)
             
-            # PPO epochs
             indices = np.arange(len(buffer.obs))
             
             for epoch in range(N_EPOCHS):
@@ -243,19 +198,14 @@ def train_ppo(seed, use_mobiu=True):
                     end = start + BATCH_SIZE
                     batch_indices = indices[start:end]
                     
-                    # Get batch
                     mb_obs = b_obs[batch_indices]
                     mb_actions = b_actions[batch_indices]
                     mb_log_probs = b_log_probs[batch_indices]
                     mb_advantages = b_advantages[batch_indices]
                     mb_returns = b_returns[batch_indices]
                     
-                    # Forward pass
-                    _, new_log_probs, entropy, new_values = model.get_action_and_value(
-                        mb_obs, mb_actions
-                    )
+                    _, new_log_probs, entropy, new_values = model.get_action_and_value(mb_obs, mb_actions)
                     
-                    # Policy loss (PPO clip)
                     log_ratio = new_log_probs - mb_log_probs
                     ratio = log_ratio.exp()
                     
@@ -263,23 +213,15 @@ def train_ppo(seed, use_mobiu=True):
                     pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - CLIP_EPSILON, 1 + CLIP_EPSILON)
                     pg_loss = torch.max(pg_loss1, pg_loss2).mean()
                     
-                    # Value loss
                     v_loss = F.mse_loss(new_values, mb_returns)
-                    
-                    # Entropy bonus
                     entropy_loss = -entropy.mean()
-                    
-                    # Total loss
                     loss = pg_loss + VF_COEF * v_loss + ENT_COEF * entropy_loss
                     
-                    # Backward
                     optimizer.zero_grad()
                     loss.backward()
                     nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
                     
-                    # Step
                     if use_mobiu and HAS_MOBIU:
-                        # Pass recent episode reward as metric
                         metric = episode_rewards[-1] if episode_rewards else 0
                         optimizer.step(metric)
                     else:
@@ -292,38 +234,32 @@ def train_ppo(seed, use_mobiu=True):
     if use_mobiu and HAS_MOBIU:
         optimizer.end()
     
-    # Return average of last 20 episodes
-    if len(episode_rewards) >= 20:
-        return np.mean(episode_rewards[-20:])
-    else:
-        return np.mean(episode_rewards) if episode_rewards else -200
+    return np.mean(episode_rewards[-20:]) if len(episode_rewards) >= 20 else np.mean(episode_rewards) if episode_rewards else -200
+
 
 # ============================================================
-# MAIN TEST
+# MAIN
 # ============================================================
 
 def main():
     print("=" * 70)
-    print("🚀 PPO + MOBIU FRUSTRATION ENGINE TEST")
+    print("🚀 PPO + MOBIU TEST")
     print("=" * 70)
     print(f"Environment: {ENV_NAME}")
+    print(f"Method: {METHOD}")
     print(f"Timesteps: {TOTAL_TIMESTEPS:,}")
     print(f"Seeds: {NUM_SEEDS}")
-    print(f"Steps per update: {STEPS_PER_UPDATE}")
     print("=" * 70)
     
-    baseline_results = []
-    mobiu_results = []
+    baseline_results, mobiu_results = [], []
     
     for seed in range(NUM_SEEDS):
         print(f"\nSeed {seed + 1}/{NUM_SEEDS}")
         
-        # Baseline (no Mobiu)
         print("  Training Baseline...", end=" ", flush=True)
         baseline_score = train_ppo(seed, use_mobiu=False)
         print(f"Score: {baseline_score:.1f}")
         
-        # Mobiu
         print("  Training Mobiu...", end=" ", flush=True)
         mobiu_score = train_ppo(seed, use_mobiu=True)
         print(f"Score: {mobiu_score:.1f}")
@@ -335,7 +271,6 @@ def main():
         winner = "✅ Mobiu" if diff > 0 else "❌ Baseline"
         print(f"  Δ = {diff:+.1f} → {winner}")
     
-    # Statistics
     baseline_arr = np.array(baseline_results)
     mobiu_arr = np.array(mobiu_results)
     diff = mobiu_arr - baseline_arr
@@ -351,10 +286,10 @@ def main():
     cohen_d = diff.mean() / (diff.std() + 1e-9)
     
     print("\n" + "=" * 70)
-    print("📊 FINAL RESULTS - PPO on LunarLander-v3")
+    print("📊 FINAL RESULTS - PPO")
     print("=" * 70)
-    print(f"Baseline (Adam):  {baseline_arr.mean():.1f} ± {baseline_arr.std():.1f}")
-    print(f"Mobiu (Engine):   {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
+    print(f"Baseline (Adam):   {baseline_arr.mean():.1f} ± {baseline_arr.std():.1f}")
+    print(f"Mobiu:      {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
     print(f"\nImprovement: {improvement:+.1f}%")
     print(f"p-value: {p_value:.6f}")
     print(f"Cohen's d: {cohen_d:+.2f}")
@@ -366,7 +301,8 @@ def main():
     elif p_value < 0.05:
         print("✅ Statistically significant")
     else:
-        print("🔶 Not statistically significant (Engine didn't hurt either)")
+        print("🔶 Not statistically significant")
+
 
 if __name__ == "__main__":
     main()
