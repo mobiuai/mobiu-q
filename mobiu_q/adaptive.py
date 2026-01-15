@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.9)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.10)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -267,7 +267,11 @@ class Mobiu:
     def _configure_from_warmup(self):
         """Configure optimizer based on warmup analysis."""
         analysis = self.warmup.analyze()
-        self._config = self.auto_config.configure(analysis)
+        self._config = self.auto_config.configure(
+            analysis,
+            forced_mode=self._forced_mode,
+            forced_method=self._forced_method
+        )
 
         # Update base_lr to auto-selected value
         self.base_lr = self._config.base_lr
@@ -350,8 +354,16 @@ class Mobiu:
         if metric is not None:
             self.energy_history.append(metric)
 
-        # Route to Cloud or Local based on configuration
-        if self._cloud_session_id and metric is not None:
+        # Route to Cloud or Local based on configuration and sync_interval
+        # Only call cloud every sync_interval steps for efficiency
+        should_sync = (
+            self._cloud_session_id and
+            metric is not None and
+            self._config is not None and
+            (self._step_count % self._config.sync_interval == 0)
+        )
+
+        if should_sync:
             return self._cloud_step(metric)
         else:
             return self._local_step(metric)
@@ -359,60 +371,60 @@ class Mobiu:
     def _cloud_step(self, metric: float):
         """Execute step via Cloud Soft Algebra API.
 
-        CRITICAL: Send REAL params and gradients to get Soft Algebra benefits!
-        The cloud computes new_params using Soft Algebra math.
+        Sends only energy to get adaptive_lr and warp_factor.
+        This is efficient (like MobiuOptimizer) - not sending full params/grads.
         """
         if not HAS_REQUESTS:
             return self._local_step(metric)
 
         # Send energy as-is - server knows about 'maximize' from session start
-        # Server handles the sign flip internally based on 'maximize' parameter
         energy_to_send = metric
-
-        # Get REAL params and gradients for Soft Algebra
-        params_flat = self._get_params_flat()
-        gradient_flat = self._get_gradient_flat()
 
         try:
             response = requests.post(API_ENDPOINT, json={
                 'action': 'step',
                 'license_key': self.license_key,
                 'session_id': self._cloud_session_id,
-                'params': params_flat.tolist(),      # REAL params!
-                'gradient': gradient_flat.tolist(),  # REAL gradients!
+                'params': [0.0],      # Minimal - not sending full params
+                'gradient': [0.0],    # Minimal - not sending full grads
                 'energy': energy_to_send
-            }, timeout=10)
+            }, timeout=1.0)  # Fast timeout like MobiuOptimizer
 
             data = response.json()
             if data.get('success'):
-                # Cloud returns new_params computed with Soft Algebra
-                if 'new_params' in data:
-                    new_params = np.array(data['new_params'])
-                    self._set_params_from_flat(new_params)
+                # Update LR from Soft Algebra
+                if 'adaptive_lr' in data:
+                    adaptive_lr = data['adaptive_lr']
+                    self.base_lr = adaptive_lr
+                    self.lr_history.append(adaptive_lr)
 
-                    # Track LR if provided
-                    if 'adaptive_lr' in data:
-                        self.lr_history.append(data['adaptive_lr'])
-                else:
-                    # Fallback: use adaptive_lr if no new_params
-                    if 'adaptive_lr' in data:
-                        adaptive_lr = data['adaptive_lr']
-                        self.lr_history.append(adaptive_lr)
-                        if self._is_pytorch and self._base_optimizer:
-                            for pg in self._base_optimizer.param_groups:
-                                pg['lr'] = adaptive_lr
+                    if self._is_pytorch and self._base_optimizer:
+                        for pg in self._base_optimizer.param_groups:
+                            pg['lr'] = adaptive_lr
 
-                    # Run base optimizer if cloud didn't return new_params
-                    if self._is_pytorch:
-                        self._base_optimizer.step()
+                # Apply gradient warping if provided
+                warp_factor = data.get('warp_factor', 1.0)
+                if warp_factor != 1.0 and self._is_pytorch:
+                    for pg in self._base_optimizer.param_groups:
+                        for param in pg['params']:
+                            if param.grad is not None:
+                                param.grad.data.mul_(warp_factor)
 
-        except Exception as e:
-            # On error, fall back to local step
-            if self._is_pytorch:
-                self._base_optimizer.step()
+        except:
+            pass  # On error, continue with current LR
 
-        # Return params for NumPy mode
-        if not self._is_pytorch:
+        # Execute base optimizer step (ALWAYS after cloud call)
+        if self._is_pytorch:
+            self._base_optimizer.step()
+        else:
+            # NumPy mode: apply local Adam step with updated LR
+            if self._current_gradient is not None:
+                self._t += 1
+                self._m = 0.9 * self._m + 0.1 * self._current_gradient
+                self._v = 0.999 * self._v + 0.001 * (self._current_gradient ** 2)
+                m_hat = self._m / (1 - 0.9 ** self._t)
+                v_hat = self._v / (1 - 0.999 ** self._t)
+                self._params = self._params - self.base_lr * m_hat / (np.sqrt(v_hat) + 1e-8)
             return self._params
 
     def _local_step(self, metric: Optional[float]):
