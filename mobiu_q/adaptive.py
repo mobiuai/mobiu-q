@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.2)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.3)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -90,11 +90,15 @@ class Mobiu:
         warmup_steps: int = 30,
         verbose: bool = True,
         use_soft_algebra: bool = True,
+        mode: Optional[str] = None,
+        method: Optional[str] = None,
     ):
         self.initial_lr = lr
         self.base_lr = lr
         self.verbose = verbose
         self.use_soft_algebra = use_soft_algebra
+        self._forced_mode = mode  # 'hardware' or 'simulation' - None for auto
+        self._forced_method = method  # 'standard', 'deep', 'adaptive' - None for auto
 
         # License handling - REQUIRED for Mobiu to work
         self.license_key = license_key or get_license_key()
@@ -275,12 +279,16 @@ class Mobiu:
         if not HAS_REQUESTS:
             return
 
+        # Use forced mode/method if provided, otherwise use auto-detected
+        mode = self._forced_mode or self._config.mode
+        method = self._forced_method or self._config.method
+
         try:
             response = requests.post(API_ENDPOINT, json={
                 'action': 'start',
                 'license_key': self.license_key,
-                'method': self._config.method,
-                'mode': 'simulation',
+                'method': method,
+                'mode': mode,
                 'use_soft_algebra': self.use_soft_algebra,
                 'base_optimizer': 'Adam',
                 'base_lr': self.base_lr

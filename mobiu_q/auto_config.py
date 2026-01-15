@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.2)
+Auto Configuration Engine (v3.6.3)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -20,6 +20,7 @@ class MobiuConfig:
     """Configuration determined by auto-detection."""
     maximize: bool          # True for reward, False for loss
     method: str             # 'standard', 'deep', or 'adaptive'
+    mode: str               # 'hardware' or 'simulation'
     use_cloud: bool         # Whether to use cloud Soft Algebra
     sync_interval: int      # How often to sync with cloud
     use_trust_region: bool  # Whether to use Trust Region
@@ -69,22 +70,26 @@ class AutoConfigEngine:
         # 2. Method selection
         method = self._select_method(analysis)
 
-        # 3. Cloud decision
+        # 3. Mode selection (hardware vs simulation)
+        mode = self._select_mode(analysis)
+
+        # 4. Cloud decision
         use_cloud = self._should_use_cloud(analysis)
 
-        # 4. Sync interval
+        # 5. Sync interval
         sync_interval = self._compute_sync_interval(analysis)
 
-        # 5. Feature activation
+        # 6. Feature activation
         use_trust_region = analysis.variance < 0.4
         use_super_equation = analysis.curvature > 0.2
 
-        # 6. Auto-select learning rate based on method
+        # 7. Auto-select learning rate based on method
         base_lr = self._select_lr(method, analysis)
 
         return MobiuConfig(
             maximize=maximize,
             method=method,
+            mode=mode,
             use_cloud=use_cloud,
             sync_interval=sync_interval,
             use_trust_region=use_trust_region,
@@ -140,6 +145,40 @@ class AutoConfigEngine:
             'adaptive': adaptive_score
         }
         return max(scores, key=scores.get)
+
+    def _select_mode(self, analysis: WarmupAnalysis) -> str:
+        """
+        Select mode (hardware vs simulation) based on noise characteristics.
+
+        Hardware mode is better for:
+        - High noise environments (quantum hardware, FakeFez)
+        - Shot noise from real measurements
+        - Systematic bias in gradients
+
+        Simulation mode is better for:
+        - Clean gradients (autodiff, backprop)
+        - Low noise environments
+        - Standard deep learning
+
+        Detection rules:
+        - High noise_level (>0.3) → hardware
+        - High variance + low curvature → hardware (suggests shot noise)
+        - Otherwise → simulation
+        """
+        # High noise strongly suggests hardware
+        if analysis.noise_level > 0.3:
+            return 'hardware'
+
+        # Moderate noise with low curvature (shot noise pattern)
+        if analysis.noise_level > 0.15 and analysis.curvature < 0.2:
+            return 'hardware'
+
+        # High variance but relatively smooth (hardware with averaging)
+        if analysis.variance > 0.4 and analysis.curvature < 0.3:
+            return 'hardware'
+
+        # Default to simulation for clean gradients
+        return 'simulation'
 
     def _should_use_cloud(self, analysis: WarmupAnalysis) -> bool:
         """

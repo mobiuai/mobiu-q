@@ -1,5 +1,5 @@
 """
-Warmup Phase Manager (v3.6.2)
+Warmup Phase Manager (v3.6.3)
 ====================
 Collects initial data during warmup to auto-detect optimization characteristics.
 
@@ -124,10 +124,16 @@ class WarmupPhaseManager:
         Detect if user is maximizing or minimizing.
 
         Logic:
-        - Compute trend (slope)
-        - Check value ranges and patterns
-        - Typical losses: small positive, decreasing
-        - Typical rewards: can be large/negative, increasing
+        - Look at trend (slope) relative to the sign of values
+        - Quantum/VQE: negative energies, want to minimize (go more negative)
+        - RL rewards: usually large positive values, want to maximize
+        - Loss functions: usually small positive values, want to minimize
+
+        Key insight:
+        - If values are negative AND decreasing (slope < 0) -> minimize (VQE)
+        - If values are negative AND increasing (slope > 0) -> maximize (bad RL)
+        - If values are positive AND large (>50) AND increasing -> maximize (RL rewards)
+        - Otherwise -> minimize (default for losses)
         """
         if len(self.metrics) < 5:
             return 'minimize'
@@ -139,30 +145,39 @@ class WarmupPhaseManager:
         # Mean value
         mean_val = np.mean(self.metrics)
 
-        # Heuristics:
-        # 1. If values are large (>100) and increasing -> likely reward
-        # 2. If values are small positive (0-10) and decreasing -> likely loss
-        # 3. If values are negative -> likely reward (many RL envs have negative rewards)
+        # Variance for detecting RL (high variance = rewards)
+        std_val = np.std(self.metrics)
+        cv = std_val / (abs(mean_val) + 1e-9)  # coefficient of variation
 
-        # Check for typical RL patterns
-        has_negative = any(m < 0 for m in self.metrics)
-        is_large_scale = abs(mean_val) > 50
+        # RL detection: large positive values with high variance and increasing
+        is_large_scale = mean_val > 50
+        has_high_variance = cv > 0.5
 
-        if has_negative:
-            # Negative values suggest RL (many envs have negative rewards initially)
+        if is_large_scale and has_high_variance and slope > 0.1:
+            # Classic RL pattern: large positive rewards increasing with high variance
             return 'maximize'
-        elif is_large_scale and slope > 0:
-            # Large positive values increasing -> reward
-            return 'maximize'
-        elif 0 < mean_val < 20 and slope < 0:
-            # Small positive values decreasing -> loss
+
+        if mean_val < 0:
+            # Negative values: this could be VQE energies OR RL penalties
+            # VQE energies: want to go MORE negative (minimize)
+            # Key: VQE has LOW variance, RL penalties have HIGH variance
+            if has_high_variance and slope > 0:
+                # High variance + increasing from negative = RL rewards improving
+                return 'maximize'
+            else:
+                # Low variance negative values = VQE/quantum energies
+                return 'minimize'
+
+        # Small positive values decreasing -> classic loss function
+        if 0 < mean_val < 20 and slope < 0:
             return 'minimize'
-        elif slope > 0:
-            # Generally increasing -> maximize
+
+        # Large positive values increasing strongly -> rewards
+        if mean_val > 50 and slope > 0.1:
             return 'maximize'
-        else:
-            # Default to minimize (supervised learning is more common)
-            return 'minimize'
+
+        # Default to minimize (supervised learning is more common)
+        return 'minimize'
 
     def _compute_variance(self) -> float:
         """
