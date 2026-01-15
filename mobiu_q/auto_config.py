@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.5)
+Auto Configuration Engine (v3.6.6)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -83,8 +83,8 @@ class AutoConfigEngine:
         use_trust_region = analysis.variance < 0.4
         use_super_equation = analysis.curvature > 0.2
 
-        # 7. Auto-select learning rate based on method
-        base_lr = self._select_lr(method, analysis)
+        # 7. Auto-select learning rate based on method AND mode
+        base_lr = self._select_lr(method, analysis, mode)
 
         return MobiuConfig(
             maximize=maximize,
@@ -231,27 +231,32 @@ class AutoConfigEngine:
 
         return max(10, min(100, interval))
 
-    def _select_lr(self, method: str, analysis: WarmupAnalysis) -> float:
+    def _select_lr(self, method: str, analysis: WarmupAnalysis, mode: str) -> float:
         """
-        Auto-select learning rate based on detected method.
+        Auto-select learning rate based on detected method and mode.
 
-        Base LRs from real benchmarks:
-        - VQE (standard): 0.01
-        - QAOA (deep): 0.1
-        - RL/Crypto (adaptive): 0.0003
+        Base LRs from real benchmarks (matching MobiuQCore defaults):
+        | Method    | Mode       | Default LR |
+        |-----------|------------|------------|
+        | standard  | simulation | 0.01       |
+        | standard  | hardware   | 0.02       |
+        | deep      | simulation | 0.1        |
+        | deep      | hardware   | 0.1        |
+        | adaptive  | any        | 0.0003     |
 
         Adjustments:
         - High noise reduces LR (avoid chasing noise)
         - High variance may require lower LR for stability
         """
-        # Base LR per method (from successful benchmarks)
-        base_lrs = {
-            'standard': 0.01,    # VQE, supervised learning
-            'deep': 0.1,         # QAOA, rugged landscapes
-            'adaptive': 0.0003   # RL, crypto trading
-        }
-
-        base_lr = base_lrs.get(method, 0.01)
+        # Base LR per method + mode (matching MobiuQCore.get_default_lr)
+        if method == 'adaptive':
+            base_lr = 0.0003
+        elif method == 'deep':
+            base_lr = 0.1
+        elif mode == 'hardware':
+            base_lr = 0.02  # Hardware needs higher LR
+        else:  # standard + simulation
+            base_lr = 0.01
 
         # Adjust based on noise level (high noise → lower LR)
         noise_scale = 1.0 - 0.3 * min(1.0, analysis.noise_level)

@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.5)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.6)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
