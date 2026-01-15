@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.14)
+Auto Configuration Engine (v3.6.15)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -223,25 +223,11 @@ class AutoConfigEngine:
         Lower interval = more frequent cloud calls = better adaptation
         Higher interval = less latency overhead
 
-        Rules:
-        - High variance: sync more often (lower interval)
-        - Low variance: sync less often (higher interval)
-        - Range: 10-100
+        MobiuOptimizer default is 10 - we match that for consistency.
         """
-        # Base interval
-        base_interval = 50
-
-        # Adjust based on variance
-        if analysis.variance > 0.5:
-            interval = 20  # High variance needs frequent updates
-        elif analysis.variance > 0.3:
-            interval = 35
-        elif analysis.variance < 0.1:
-            interval = 100  # Low variance can use less frequent updates
-        else:
-            interval = base_interval
-
-        return max(10, min(100, interval))
+        # Match MobiuOptimizer default of 10
+        # This ensures Soft Algebra runs frequently enough to adapt
+        return 10
 
     def _select_lr(self, method: str, analysis: WarmupAnalysis, mode: str) -> float:
         """
