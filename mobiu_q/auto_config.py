@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.4)
+Auto Configuration Engine (v3.6.5)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -157,36 +157,39 @@ class AutoConfigEngine:
 
         Simulation mode is better for:
         - Clean gradients (autodiff, backprop)
-        - Low noise environments
+        - RL/Trading (high variance in REWARDS, not gradients)
         - Standard deep learning
 
-        Detection rules for hardware:
-        - High noise_level (>0.15) → hardware
-        - Moderate noise (>0.05) with variance pattern → hardware
-        - Very low noise (<0.02) → simulation (clean autodiff)
+        Key insight:
+        - Quantum: moderate variance (0.1-0.5) + noise in measurements
+        - RL/Trading: VERY high variance (>0.5) from reward stochasticity
+        - Deep Learning: low variance, clean gradients
         """
-        # High noise strongly suggests hardware
-        if analysis.noise_level > 0.15:
+        # RL/Trading pattern: very high variance suggests reward stochasticity
+        # not gradient noise - use simulation mode
+        if analysis.variance > 0.5:
+            return 'simulation'
+
+        # High noise with moderate variance suggests quantum hardware
+        if analysis.noise_level > 0.15 and analysis.variance < 0.5:
             return 'hardware'
 
-        # Moderate noise (typical of quantum) - lower threshold
+        # Moderate noise (typical of quantum shot noise)
         if analysis.noise_level > 0.05:
-            # Check for shot noise patterns:
-            # - variance present but not too high (not RL-like)
-            # - relatively low curvature (smooth underlying function + noise)
+            # Check for quantum patterns:
+            # - moderate variance (not RL-like)
+            # - or high curvature (rugged quantum landscape)
             if analysis.variance > 0.1 and analysis.variance < 0.5:
                 return 'hardware'
-            # High curvature with noise suggests rugged quantum landscape
-            if analysis.curvature > 0.15:
+            if analysis.curvature > 0.15 and analysis.variance < 0.4:
                 return 'hardware'
 
         # Very clean gradients (autodiff, simulation)
-        if analysis.noise_level < 0.02 and analysis.variance < 0.05:
+        if analysis.noise_level < 0.02:
             return 'simulation'
 
-        # Default: if there's ANY measurable noise, assume hardware
-        # (better to be conservative - hardware mode is safer)
-        if analysis.noise_level > 0.03:
+        # Low-moderate noise with low variance - likely quantum
+        if analysis.noise_level > 0.03 and analysis.variance < 0.4:
             return 'hardware'
 
         return 'simulation'
