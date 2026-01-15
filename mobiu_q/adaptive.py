@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.6)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.8)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -291,7 +291,8 @@ class Mobiu:
                 'mode': mode,
                 'use_soft_algebra': self.use_soft_algebra,
                 'base_optimizer': 'Adam',
-                'base_lr': self.base_lr
+                'base_lr': self.base_lr,
+                'maximize': self._config.maximize  # CRITICAL: Tell server if maximizing!
             }, timeout=15)
 
             data = response.json()
@@ -346,9 +347,9 @@ class Mobiu:
         if not HAS_REQUESTS:
             return self._local_step(metric)
 
-        # Cloud assumes "lower is better" (energy/loss)
-        # If maximizing, flip sign so cloud sees improvement
-        energy_to_send = metric if not self._config.maximize else -metric
+        # Send energy as-is - server knows about 'maximize' from session start
+        # Server handles the sign flip internally based on 'maximize' parameter
+        energy_to_send = metric
 
         # Get REAL params and gradients for Soft Algebra
         params_flat = self._get_params_flat()
