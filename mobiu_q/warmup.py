@@ -1,5 +1,5 @@
 """
-Warmup Phase Manager (v3.6.11)
+Warmup Phase Manager (v3.6.12)
 ====================
 Collects initial data during warmup to auto-detect optimization characteristics.
 
@@ -123,57 +123,76 @@ class WarmupPhaseManager:
         """
         Detect if user is maximizing or minimizing.
 
-        Logic:
-        - Look at trend (slope) relative to the sign of values
-        - Quantum/VQE: negative energies, want to minimize (go more negative)
-        - RL rewards: usually large positive values, want to maximize
-        - Loss functions: usually small positive values, want to minimize
+        Key insight: Look at the TRAJECTORY, not just the values.
+        - If values are IMPROVING (going in a "better" direction) = user wants this
+        - VQE: values go MORE NEGATIVE (slope < 0, mean < 0) = minimize
+        - RL: values INCREASE (slope > 0) regardless of sign = maximize
+        - Loss: values DECREASE (slope < 0, mean > 0) = minimize
 
-        Key insight:
-        - If values are negative AND decreasing (slope < 0) -> minimize (VQE)
-        - If values are negative AND increasing (slope > 0) -> maximize (bad RL)
-        - If values are positive AND large (>50) AND increasing -> maximize (RL rewards)
-        - Otherwise -> minimize (default for losses)
+        The key signal is:
+        - slope > 0 + large absolute change = maximize (RL rewards improving)
+        - slope < 0 + small values (0-10) = minimize (loss decreasing)
+        - slope < 0 + negative values = minimize (VQE energy decreasing)
         """
         if len(self.metrics) < 5:
             return 'minimize'
 
-        # Compute slope
+        # Compute slope (trend)
         x = np.arange(len(self.metrics))
         slope = np.polyfit(x, self.metrics, 1)[0]
 
-        # Mean value
+        # Statistics
         mean_val = np.mean(self.metrics)
-
-        # Variance for detecting RL (high variance = rewards)
         std_val = np.std(self.metrics)
-        cv = std_val / (abs(mean_val) + 1e-9)  # coefficient of variation
+        value_range = max(self.metrics) - min(self.metrics)
 
-        # RL detection: large positive values with high variance and increasing
-        is_large_scale = mean_val > 50
-        has_high_variance = cv > 0.5
+        # Coefficient of variation (normalized variance)
+        cv = std_val / (abs(mean_val) + 1e-9)
 
-        if is_large_scale and has_high_variance and slope > 0.1:
-            # Classic RL pattern: large positive rewards increasing with high variance
+        # Key signals
+        is_increasing = slope > 0.1  # Significant positive trend
+        has_high_variance = cv > 0.3 or std_val > 10  # Lower threshold!
+        is_large_scale = abs(mean_val) > 20 or value_range > 50
+
+        # ========================
+        # MAXIMIZE detection (RL/Trading)
+        # ========================
+
+        # Pattern 1: Values increasing significantly = user wants higher values
+        if is_increasing and (has_high_variance or is_large_scale):
             return 'maximize'
 
-        if mean_val < 0:
-            # Negative values: this could be VQE energies OR RL penalties
-            # VQE energies: want to go MORE negative (minimize)
-            # Key: VQE has LOW variance, RL penalties have HIGH variance
-            if has_high_variance and slope > 0:
-                # High variance + increasing from negative = RL rewards improving
-                return 'maximize'
-            else:
-                # Low variance negative values = VQE/quantum energies
-                return 'minimize'
+        # Pattern 2: Negative values becoming less negative (improving towards 0)
+        # This is classic RL: starts at -200, improves towards 0 or positive
+        if mean_val < 0 and slope > 0.5 and value_range > 20:
+            return 'maximize'
 
-        # Small positive values decreasing -> classic loss function
+        # Pattern 3: High variance + any improvement = probably RL
+        if has_high_variance and slope > 0:
+            return 'maximize'
+
+        # ========================
+        # MINIMIZE detection (VQE/Loss)
+        # ========================
+
+        # Pattern 1: VQE - negative values going MORE negative
+        if mean_val < 0 and slope < -0.01:
+            return 'minimize'
+
+        # Pattern 2: Loss function - small positive values decreasing
         if 0 < mean_val < 20 and slope < 0:
             return 'minimize'
 
-        # Large positive values increasing strongly -> rewards
-        if mean_val > 50 and slope > 0.1:
+        # Pattern 3: Very low variance = likely VQE/quantum (not RL)
+        if cv < 0.1 and std_val < 1:
+            return 'minimize'
+
+        # ========================
+        # Tie-breaker: Use value scale
+        # ========================
+
+        # Large scale values with any positive trend = rewards
+        if is_large_scale and slope > 0:
             return 'maximize'
 
         # Default to minimize (supervised learning is more common)

@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.11)
+Auto Configuration Engine (v3.6.12)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -58,7 +58,8 @@ class AutoConfigEngine:
         self,
         analysis: WarmupAnalysis,
         forced_mode: Optional[str] = None,
-        forced_method: Optional[str] = None
+        forced_method: Optional[str] = None,
+        forced_maximize: Optional[bool] = None
     ) -> MobiuConfig:
         """
         Generate configuration from warmup analysis.
@@ -67,12 +68,16 @@ class AutoConfigEngine:
             analysis: Results from WarmupPhaseManager.analyze()
             forced_mode: If set, override auto-detected mode ('hardware'/'simulation')
             forced_method: If set, override auto-detected method ('standard'/'deep'/'adaptive')
+            forced_maximize: If set, override auto-detected direction (True/False)
 
         Returns:
             MobiuConfig with all settings determined
         """
-        # 1. Direction (maximize/minimize)
-        maximize = analysis.direction == 'maximize'
+        # 1. Direction (maximize/minimize) - use forced if provided
+        if forced_maximize is not None:
+            maximize = forced_maximize
+        else:
+            maximize = analysis.direction == 'maximize'
 
         # 2. Method selection (use forced if provided)
         method = forced_method if forced_method else self._select_method(analysis)
