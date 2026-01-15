@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.8)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.9)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -18,6 +18,24 @@ That's it! Mobiu automatically:
 - Selects the best optimization strategy
 - Adapts learning rate via Cloud Soft Algebra
 - Falls back to standard Adam without license
+
+Multi-seed experiments:
+    # Option 1: Warmup once, then run multiple seeds (RECOMMENDED)
+    opt = Mobiu(params, lr=0.001)
+    opt.warmup_only(warmup_data)  # Learn configuration
+
+    for seed in range(10):
+        params = random_init()
+        opt.new_run(params)  # Start fresh with learned config
+        for step in range(100):
+            opt.step(metric)  # Soft Algebra from step 1!
+
+    # Option 2: Auto-warmup per run (slower, less consistent)
+    for seed in range(10):
+        params = random_init()
+        opt.reset()  # Full reset including warmup
+        for step in range(100):
+            opt.step(metric)  # Warmup for first 30 steps
 """
 
 import numpy as np
@@ -491,11 +509,62 @@ class Mobiu:
         if self._is_pytorch and self._base_optimizer:
             self._base_optimizer.zero_grad()
 
+    def warmup_only(self, metrics: List[float], grad_norms: Optional[List[float]] = None):
+        """Run warmup phase with provided data to learn configuration.
+
+        This allows you to learn the optimal configuration ONCE, then run
+        multiple seeds/runs with Soft Algebra from step 1.
+
+        Args:
+            metrics: List of metric values (loss or reward) from a preliminary run
+            grad_norms: Optional list of gradient norms (for better detection)
+
+        Example:
+            # Run preliminary data collection
+            warmup_metrics = []
+            for step in range(30):
+                metric = compute_metric()
+                warmup_metrics.append(metric)
+
+            # Learn configuration
+            opt = Mobiu(params, lr=0.001)
+            opt.warmup_only(warmup_metrics)
+
+            # Now run multiple seeds with Soft Algebra from step 1
+            for seed in range(10):
+                opt.new_run(init_params[seed])
+                for step in range(100):
+                    opt.step(metric)  # Soft Algebra from step 1!
+        """
+        if len(metrics) < 5:
+            raise ValueError("Need at least 5 metrics for warmup")
+
+        # Feed metrics to warmup manager
+        grad_norms = grad_norms or [0.0] * len(metrics)
+        for i, (m, g) in enumerate(zip(metrics, grad_norms)):
+            self.warmup.record(m, g)
+
+        # Force warmup completion if not enough samples
+        if not self.warmup.is_complete:
+            self.warmup.is_complete = True
+
+        # Configure from warmup analysis
+        self._configure_from_warmup()
+
+        if self.verbose:
+            print(f"   Warmup complete - configuration learned")
+
     def new_run(self, params=None):
-        """Reset for new optimization run (multi-seed experiments).
+        """Reset for new optimization run while KEEPING learned configuration.
+
+        Use this for multi-seed experiments after warmup_only() or after
+        the first run has completed warmup.
 
         Args:
             params: Optional new initial parameters (required for NumPy mode)
+
+        IMPORTANT: This keeps the learned configuration (method, mode, lr, etc.)
+        and starts a NEW cloud session immediately. Soft Algebra works from step 1!
         """
         # End current cloud session
         self._end_cloud_session()
@@ -525,14 +594,47 @@ class Mobiu:
                 self._m = np.zeros_like(self._params)
                 self._v = np.zeros_like(self._params)
 
-        # Reset warmup for new run
+        # CRITICAL: Do NOT reset warmup or config!
+        # Keep is_configured=True so Soft Algebra works from step 1
+
+        # If already configured, start new cloud session immediately
+        if self.is_configured and self._config and self._config.use_cloud and self._has_license:
+            self._start_cloud_session()
+
+    def reset(self):
+        """Full reset including warmup - use for completely fresh start.
+
+        Unlike new_run(), this resets everything including the learned
+        configuration. The next run will do warmup again.
+        """
+        # End current cloud session
+        self._end_cloud_session()
+
+        # Reset everything
+        self.energy_history.clear()
+        self.lr_history.clear()
+        self._step_count = 0
+        self._current_gradient = None
+
+        # Reset warmup
         self.warmup = WarmupPhaseManager(self.warmup.warmup_steps)
         self.is_configured = False
         self._config = None
 
-        # Start new cloud session if configured
-        if self._config and self._config.use_cloud and self._has_license:
-            self._start_cloud_session()
+        # Reset components
+        self._frustration_engine = None
+
+        # Reset optimizer state
+        if self._is_pytorch and self._base_optimizer:
+            self._base_optimizer.state.clear()
+            for pg in self._base_optimizer.param_groups:
+                pg['lr'] = self.initial_lr
+        else:
+            self._m = np.zeros_like(self._params)
+            self._v = np.zeros_like(self._params)
+            self._t = 0
+
+        self.base_lr = self.initial_lr
 
     def _end_cloud_session(self):
         """End the current Cloud API session."""
