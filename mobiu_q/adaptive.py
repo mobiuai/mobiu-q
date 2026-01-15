@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.15)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.16)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -161,6 +161,7 @@ class Mobiu:
 
         # State tracking
         self._step_count = 0
+        self._adaptive_step_count = 0  # Steps since adaptive phase started
         self.energy_history: List[float] = []
         self.lr_history: List[float] = []
 
@@ -362,6 +363,8 @@ class Mobiu:
 
     def _adaptive_step(self, metric: Optional[float]):
         """Handle step during adaptive phase."""
+        self._adaptive_step_count += 1
+
         if metric is not None:
             self.energy_history.append(metric)
 
@@ -377,12 +380,12 @@ class Mobiu:
                     for pg in self._base_optimizer.param_groups:
                         pg['lr'] = new_lr
 
-        # 2. CLOUD SYNC (every sync_interval steps)
+        # 2. CLOUD SYNC (every sync_interval steps from START of adaptive phase)
         should_sync = (
             self._cloud_session_id and
             metric is not None and
             self._config is not None and
-            (self._step_count % self._config.sync_interval == 0)
+            (self._adaptive_step_count % self._config.sync_interval == 0)
         )
 
         if should_sync:
