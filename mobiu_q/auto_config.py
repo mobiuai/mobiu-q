@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.1.0)
+Auto Configuration Engine (v3.6.1.1)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 

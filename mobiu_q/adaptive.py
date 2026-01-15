@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.10)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.1.1)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -354,8 +354,19 @@ class Mobiu:
         if metric is not None:
             self.energy_history.append(metric)
 
-        # Route to Cloud or Local based on configuration and sync_interval
-        # Only call cloud every sync_interval steps for efficiency
+        # 1. FRUSTRATION ENGINE (runs EVERY step, like MobiuQCore)
+        if self._frustration_engine and metric is not None:
+            score = metric if self._config and self._config.maximize else -metric
+            factor = self._frustration_engine.get_lr_factor(score)
+
+            if factor > 1.0:
+                new_lr = self.base_lr * factor
+                self.lr_history.append(new_lr)
+                if self._is_pytorch and self._base_optimizer:
+                    for pg in self._base_optimizer.param_groups:
+                        pg['lr'] = new_lr
+
+        # 2. CLOUD SYNC (every sync_interval steps)
         should_sync = (
             self._cloud_session_id and
             metric is not None and
@@ -364,43 +375,34 @@ class Mobiu:
         )
 
         if should_sync:
-            return self._cloud_step(metric)
-        else:
-            return self._local_step(metric)
+            self._cloud_sync(metric)
 
-    def _cloud_step(self, metric: float):
-        """Execute step via Cloud Soft Algebra API.
+        # 3. Execute optimizer step (EVERY step)
+        return self._execute_step()
 
-        Sends only energy to get adaptive_lr and warp_factor.
-        This is efficient (like MobiuOptimizer) - not sending full params/grads.
-        """
+    def _cloud_sync(self, metric: float):
+        """Sync with Cloud Soft Algebra API to get adaptive_lr and warp_factor."""
         if not HAS_REQUESTS:
-            return self._local_step(metric)
-
-        # Send energy as-is - server knows about 'maximize' from session start
-        energy_to_send = metric
+            return
 
         try:
             response = requests.post(API_ENDPOINT, json={
                 'action': 'step',
                 'license_key': self.license_key,
                 'session_id': self._cloud_session_id,
-                'params': [0.0],      # Minimal - not sending full params
-                'gradient': [0.0],    # Minimal - not sending full grads
-                'energy': energy_to_send
-            }, timeout=1.0)  # Fast timeout like MobiuOptimizer
+                'params': [0.0],
+                'gradient': [0.0],
+                'energy': metric
+            }, timeout=1.0)
 
             data = response.json()
             if data.get('success'):
-                # Update LR from Soft Algebra
+                # Update base LR from Soft Algebra
                 if 'adaptive_lr' in data:
-                    adaptive_lr = data['adaptive_lr']
-                    self.base_lr = adaptive_lr
-                    self.lr_history.append(adaptive_lr)
-
+                    self.base_lr = data['adaptive_lr']
                     if self._is_pytorch and self._base_optimizer:
                         for pg in self._base_optimizer.param_groups:
-                            pg['lr'] = adaptive_lr
+                            pg['lr'] = self.base_lr
 
                 # Apply gradient warping if provided
                 warp_factor = data.get('warp_factor', 1.0)
@@ -409,39 +411,14 @@ class Mobiu:
                         for param in pg['params']:
                             if param.grad is not None:
                                 param.grad.data.mul_(warp_factor)
-
         except:
             pass  # On error, continue with current LR
 
-        # Execute base optimizer step (ALWAYS after cloud call)
+    def _execute_step(self):
+        """Execute the actual optimizer step (PyTorch or NumPy)."""
         if self._is_pytorch:
             self._base_optimizer.step()
-        else:
-            # NumPy mode: apply local Adam step with updated LR
-            if self._current_gradient is not None:
-                self._t += 1
-                self._m = 0.9 * self._m + 0.1 * self._current_gradient
-                self._v = 0.999 * self._v + 0.001 * (self._current_gradient ** 2)
-                m_hat = self._m / (1 - 0.9 ** self._t)
-                v_hat = self._v / (1 - 0.999 ** self._t)
-                self._params = self._params - self.base_lr * m_hat / (np.sqrt(v_hat) + 1e-8)
-            return self._params
-
-    def _local_step(self, metric: Optional[float]):
-        """Fallback step when Cloud is temporarily unavailable."""
-        # This should rarely happen - Cloud is required for Soft Algebra
-        # Use Frustration Engine as basic fallback
-        if self._frustration_engine and metric is not None:
-            score = metric if self._config and self._config.maximize else -metric
-            factor = self._frustration_engine.get_lr_factor(score)
-
-            if factor != 1.0:
-                self._apply_lr_factor(factor)
-                self.lr_history.append(self.base_lr * factor)
-
-        # Execute base optimizer step
-        if self._is_pytorch:
-            self._base_optimizer.step()
+            return None
         else:
             # NumPy mode: apply local Adam step
             if self._current_gradient is not None:
