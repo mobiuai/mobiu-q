@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.1)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.2)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -231,6 +231,16 @@ class Mobiu:
         # Execute base step
         if self._is_pytorch:
             self._base_optimizer.step()
+        else:
+            # NumPy mode: apply local Adam step and return new params
+            if self._current_gradient is not None:
+                self._t += 1
+                self._m = 0.9 * self._m + 0.1 * self._current_gradient
+                self._v = 0.999 * self._v + 0.001 * (self._current_gradient ** 2)
+                m_hat = self._m / (1 - 0.9 ** self._t)
+                v_hat = self._v / (1 - 0.999 ** self._t)
+                self._params = self._params - self.base_lr * m_hat / (np.sqrt(v_hat) + 1e-8)
+            return self._params
 
     def _configure_from_warmup(self):
         """Configure optimizer based on warmup analysis."""
@@ -374,6 +384,10 @@ class Mobiu:
             if self._is_pytorch:
                 self._base_optimizer.step()
 
+        # Return params for NumPy mode
+        if not self._is_pytorch:
+            return self._params
+
     def _local_step(self, metric: Optional[float]):
         """Fallback step when Cloud is temporarily unavailable."""
         # This should rarely happen - Cloud is required for Soft Algebra
@@ -389,11 +403,22 @@ class Mobiu:
         # Execute base optimizer step
         if self._is_pytorch:
             self._base_optimizer.step()
+        else:
+            # NumPy mode: apply local Adam step
+            if self._current_gradient is not None:
+                self._t += 1
+                self._m = 0.9 * self._m + 0.1 * self._current_gradient
+                self._v = 0.999 * self._v + 0.001 * (self._current_gradient ** 2)
+                m_hat = self._m / (1 - 0.9 ** self._t)
+                v_hat = self._v / (1 - 0.999 ** self._t)
+                self._params = self._params - self.base_lr * m_hat / (np.sqrt(v_hat) + 1e-8)
+            return self._params
 
     def _get_params_flat(self) -> np.ndarray:
-        """Get flattened parameters (PyTorch)."""
+        """Get flattened parameters."""
         if not self._is_pytorch:
-            return np.array([])
+            # NumPy mode - return params directly
+            return self._params.flatten()
 
         params_list = []
         for p in self._params:
@@ -401,9 +426,12 @@ class Mobiu:
         return np.concatenate(params_list)
 
     def _get_gradient_flat(self) -> np.ndarray:
-        """Get flattened gradients (PyTorch)."""
+        """Get flattened gradients."""
         if not self._is_pytorch:
-            return np.array([])
+            # NumPy mode - return stored gradient
+            if self._current_gradient is not None:
+                return self._current_gradient.flatten()
+            return np.zeros_like(self._params).flatten()
 
         grads_list = []
         for p in self._params:
@@ -432,6 +460,9 @@ class Mobiu:
     def _compute_grad_norm(self) -> float:
         """Compute total gradient norm."""
         if not self._is_pytorch:
+            # NumPy mode: use stored gradient
+            if self._current_gradient is not None:
+                return float(np.linalg.norm(self._current_gradient))
             return 0.0
 
         total_norm = 0.0
@@ -451,8 +482,12 @@ class Mobiu:
         if self._is_pytorch and self._base_optimizer:
             self._base_optimizer.zero_grad()
 
-    def new_run(self):
-        """Reset for new optimization run (multi-seed experiments)."""
+    def new_run(self, params=None):
+        """Reset for new optimization run (multi-seed experiments).
+
+        Args:
+            params: Optional new initial parameters (required for NumPy mode)
+        """
         # End current cloud session
         self._end_cloud_session()
 
@@ -460,6 +495,7 @@ class Mobiu:
         self.energy_history.clear()
         self.lr_history.clear()
         self._step_count = 0
+        self._current_gradient = None
 
         # Reset components
         if self._frustration_engine:
@@ -470,6 +506,20 @@ class Mobiu:
             self._base_optimizer.state.clear()
             for pg in self._base_optimizer.param_groups:
                 pg['lr'] = self.base_lr
+        else:
+            # NumPy mode: reset Adam state and optionally set new params
+            self._m = np.zeros_like(self._params)
+            self._v = np.zeros_like(self._params)
+            self._t = 0
+            if params is not None:
+                self._params = np.array(params)
+                self._m = np.zeros_like(self._params)
+                self._v = np.zeros_like(self._params)
+
+        # Reset warmup for new run
+        self.warmup = WarmupPhaseManager(self.warmup.warmup_steps)
+        self.is_configured = False
+        self._config = None
 
         # Start new cloud session if configured
         if self._config and self._config.use_cloud and self._has_license:
@@ -513,6 +563,22 @@ class Mobiu:
         if self._is_pytorch and self._base_optimizer:
             return self._base_optimizer.state
         return {}
+
+    @property
+    def params(self) -> np.ndarray:
+        """Get current parameters (NumPy mode)."""
+        if not self._is_pytorch:
+            return self._params
+        # PyTorch mode: return flattened params
+        return self._get_params_flat()
+
+    def get_params(self) -> np.ndarray:
+        """Get current parameters as numpy array."""
+        return self._get_params_flat()
+
+    def set_params(self, params: np.ndarray):
+        """Set parameters from numpy array."""
+        self._set_params_from_flat(params)
 
     def __del__(self):
         """Cleanup on garbage collection."""
