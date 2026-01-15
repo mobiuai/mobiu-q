@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.0)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.1)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -62,6 +62,7 @@ class Mobiu:
         license_key: License key for Cloud Soft Algebra
         warmup_steps: Steps to collect before auto-configuration (default: 30)
         verbose: Print status messages (default: True)
+        use_soft_algebra: Enable Soft Algebra optimization (default: True)
 
     Example (PyTorch):
         model = MyModel()
@@ -88,10 +89,12 @@ class Mobiu:
         license_key: Optional[str] = None,
         warmup_steps: int = 30,
         verbose: bool = True,
+        use_soft_algebra: bool = True,
     ):
         self.initial_lr = lr
         self.base_lr = lr
         self.verbose = verbose
+        self.use_soft_algebra = use_soft_algebra
 
         # License handling - REQUIRED for Mobiu to work
         self.license_key = license_key or get_license_key()
@@ -268,7 +271,7 @@ class Mobiu:
                 'license_key': self.license_key,
                 'method': self._config.method,
                 'mode': 'simulation',
-                'use_soft_algebra': True,
+                'use_soft_algebra': self.use_soft_algebra,
                 'base_optimizer': 'Adam',
                 'base_lr': self.base_lr
             }, timeout=15)
