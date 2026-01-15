@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.18)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.19)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -105,7 +105,7 @@ class Mobiu:
         params,
         lr: float = 0.001,
         license_key: Optional[str] = None,
-        warmup_steps: int = 30,
+        warmup_steps: int = 10,
         verbose: bool = True,
         use_soft_algebra: bool = True,
         mode: Optional[str] = None,

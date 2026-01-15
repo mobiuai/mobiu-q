@@ -1,9 +1,9 @@
 """
-Warmup Phase Manager (v3.6.18)
+Warmup Phase Manager (v3.6.19)
 ====================
 Collects initial data during warmup to auto-detect optimization characteristics.
 
-The warmup phase runs for the first N steps (default: 30) and analyzes:
+The warmup phase runs for the first N steps (default: 10) and analyzes:
 - Direction: maximize (reward) vs minimize (loss)
 - Variance: high variance suggests RL/trading
 - Curvature: high curvature suggests rugged landscape (QAOA)
@@ -47,7 +47,7 @@ class WarmupPhaseManager:
                     print(f"Direction: {analysis.direction}")
     """
 
-    def __init__(self, warmup_steps: int = 30):
+    def __init__(self, warmup_steps: int = 10):
         """
         Initialize warmup manager.
 
