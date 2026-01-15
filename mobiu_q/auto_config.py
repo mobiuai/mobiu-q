@@ -1,5 +1,5 @@
 """
-Auto Configuration Engine (v3.6.3)
+Auto Configuration Engine (v3.6.4)
 =========================
 Automatically selects optimal configuration based on warmup analysis.
 
@@ -160,24 +160,35 @@ class AutoConfigEngine:
         - Low noise environments
         - Standard deep learning
 
-        Detection rules:
-        - High noise_level (>0.3) → hardware
-        - High variance + low curvature → hardware (suggests shot noise)
-        - Otherwise → simulation
+        Detection rules for hardware:
+        - High noise_level (>0.15) → hardware
+        - Moderate noise (>0.05) with variance pattern → hardware
+        - Very low noise (<0.02) → simulation (clean autodiff)
         """
         # High noise strongly suggests hardware
-        if analysis.noise_level > 0.3:
+        if analysis.noise_level > 0.15:
             return 'hardware'
 
-        # Moderate noise with low curvature (shot noise pattern)
-        if analysis.noise_level > 0.15 and analysis.curvature < 0.2:
+        # Moderate noise (typical of quantum) - lower threshold
+        if analysis.noise_level > 0.05:
+            # Check for shot noise patterns:
+            # - variance present but not too high (not RL-like)
+            # - relatively low curvature (smooth underlying function + noise)
+            if analysis.variance > 0.1 and analysis.variance < 0.5:
+                return 'hardware'
+            # High curvature with noise suggests rugged quantum landscape
+            if analysis.curvature > 0.15:
+                return 'hardware'
+
+        # Very clean gradients (autodiff, simulation)
+        if analysis.noise_level < 0.02 and analysis.variance < 0.05:
+            return 'simulation'
+
+        # Default: if there's ANY measurable noise, assume hardware
+        # (better to be conservative - hardware mode is safer)
+        if analysis.noise_level > 0.03:
             return 'hardware'
 
-        # High variance but relatively smooth (hardware with averaging)
-        if analysis.variance > 0.4 and analysis.curvature < 0.3:
-            return 'hardware'
-
-        # Default to simulation for clean gradients
         return 'simulation'
 
     def _should_use_cloud(self, analysis: WarmupAnalysis) -> bool:
