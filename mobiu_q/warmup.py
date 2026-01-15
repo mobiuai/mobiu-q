@@ -1,5 +1,5 @@
 """
-Warmup Phase Manager (v3.6.12)
+Warmup Phase Manager (v3.6.14)
 ====================
 Collects initial data during warmup to auto-detect optimization characteristics.
 
@@ -175,8 +175,9 @@ class WarmupPhaseManager:
         # MINIMIZE detection (VQE/Loss)
         # ========================
 
-        # Pattern 1: VQE - negative values going MORE negative
-        if mean_val < 0 and slope < -0.01:
+        # Pattern 1: VQE - negative values going MORE negative WITH LOW VARIANCE
+        # High variance negative values = RL penalties, not VQE
+        if mean_val < 0 and slope < -0.01 and cv < 0.5:
             return 'minimize'
 
         # Pattern 2: Loss function - small positive values decreasing
@@ -188,11 +189,18 @@ class WarmupPhaseManager:
             return 'minimize'
 
         # ========================
-        # Tie-breaker: Use value scale
+        # Tie-breaker: Use variance as signal
         # ========================
 
         # Large scale values with any positive trend = rewards
         if is_large_scale and slope > 0:
+            return 'maximize'
+
+        # HIGH VARIANCE is a strong signal for RL/Trading
+        # RL rewards have high variance, VQE/loss have low variance
+        # Trading returns: small values with high variance near zero
+        if cv > 0.8 and abs(mean_val) < 1:
+            # Very high variance near zero = likely trading returns
             return 'maximize'
 
         # Default to minimize (supervised learning is more common)

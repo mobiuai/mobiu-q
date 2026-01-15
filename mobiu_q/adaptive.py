@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.12)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.14)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -276,13 +276,21 @@ class Mobiu:
             forced_maximize=self._forced_maximize
         )
 
-        # Update base_lr to auto-selected value
-        self.base_lr = self._config.base_lr
+        # LR POLICY: User's LR takes precedence if explicitly set
+        # Auto-select is only used when user gave default (0.001)
+        user_specified_lr = (self.initial_lr != 0.001)
 
-        # Update base optimizer LR
-        if self._is_pytorch and self._base_optimizer:
-            for pg in self._base_optimizer.param_groups:
-                pg['lr'] = self.base_lr
+        if user_specified_lr:
+            # User knows their LR - respect it
+            self.base_lr = self.initial_lr
+        else:
+            # User gave default - use auto-selected
+            self.base_lr = self._config.base_lr
+
+            # Update base optimizer LR only if auto-selected
+            if self._is_pytorch and self._base_optimizer:
+                for pg in self._base_optimizer.param_groups:
+                    pg['lr'] = self.base_lr
 
         # Initialize Frustration Engine (works locally)
         self._frustration_engine = UniversalFrustrationEngine(
