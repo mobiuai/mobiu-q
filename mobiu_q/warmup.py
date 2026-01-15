@@ -1,5 +1,5 @@
 """
-Warmup Phase Manager (v3.6.16)
+Warmup Phase Manager (v3.6.17)
 ====================
 Collects initial data during warmup to auto-detect optimization characteristics.
 

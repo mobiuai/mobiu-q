@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.16)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.17)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -389,7 +389,10 @@ class Mobiu:
         )
 
         if should_sync:
+            old_lr = self.base_lr
             self._cloud_sync(metric)
+            if self.verbose and self.base_lr != old_lr:
+                print(f"   [Sync @ step {self._step_count}] LR: {old_lr:.6f} → {self.base_lr:.6f}")
 
         # 3. Execute optimizer step (EVERY step)
         return self._execute_step()
