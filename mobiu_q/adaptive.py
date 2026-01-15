@@ -1,5 +1,5 @@
 """
-Mobiu - Adaptive Optimizer with Simple API (v3.6.19)
+Mobiu - Adaptive Optimizer with Simple API (v3.6.22)
 ==========================================
 A plug-and-play optimizer that automatically detects and adapts to your problem.
 
@@ -165,6 +165,77 @@ class Mobiu:
         self.energy_history: List[float] = []
         self.lr_history: List[float] = []
 
+        # Save initial params for reset after warmup
+        self._initial_params_state = self._save_params_state()
+
+        # If user provided maximize explicitly, skip warmup entirely
+        # Otherwise, warmup will happen during first N steps (dry run)
+        if self._forced_maximize is not None:
+            self._skip_warmup()
+
+    def _save_params_state(self):
+        """Save current parameter state for later restoration."""
+        if self._is_pytorch:
+            # Deep copy PyTorch parameters
+            import copy
+            return [p.data.clone() for p in self._params]
+        else:
+            # Copy NumPy array
+            return self._params.copy()
+
+    def _restore_params_state(self, state):
+        """Restore parameters to saved state."""
+        if self._is_pytorch:
+            for p, saved in zip(self._params, state):
+                p.data.copy_(saved)
+            # Also reset optimizer state
+            self._base_optimizer = torch.optim.Adam(self._params, lr=self.base_lr)
+        else:
+            self._params = state.copy()
+            # Reset Adam state
+            self._m = np.zeros_like(self._params)
+            self._v = np.zeros_like(self._params)
+            self._t = 0
+
+    def _skip_warmup(self):
+        """Skip warmup when user provides explicit maximize parameter."""
+        # Create a fake analysis with default values
+        from .warmup import WarmupAnalysis
+        fake_analysis = WarmupAnalysis(
+            direction='maximize' if self._forced_maximize else 'minimize',
+            variance=0.3,  # moderate
+            curvature=0.3,  # moderate
+            noise_level=0.2,  # low-moderate
+            mean_value=0.0,
+            trend=0.0
+        )
+
+        # Configure immediately
+        self._config = self.auto_config.configure(
+            fake_analysis,
+            forced_mode=self._forced_mode,
+            forced_method=self._forced_method,
+            forced_maximize=self._forced_maximize
+        )
+
+        # Use user's LR (don't auto-select)
+        self.base_lr = self.initial_lr
+
+        # Initialize Frustration Engine
+        self._frustration_engine = UniversalFrustrationEngine(
+            base_lr=self.base_lr,
+            sensitivity=0.05
+        )
+
+        # Start Cloud session immediately
+        if self._config.use_cloud and self._has_license and self._has_connection:
+            self._start_cloud_session()
+
+        self.is_configured = True
+
+        if self.verbose:
+            self._print_config()
+
     def _detect_pytorch(self, params) -> bool:
         """Detect if params are PyTorch parameters."""
         if not HAS_TORCH:
@@ -242,7 +313,12 @@ class Mobiu:
         return self._adaptive_step(metric)
 
     def _warmup_step(self, metric: Optional[float]):
-        """Handle step during warmup phase."""
+        """
+        Handle step during warmup phase.
+
+        IMPORTANT: During warmup we only collect metrics, we do NOT update parameters.
+        After warmup completes, we restore params to initial state and replay all steps.
+        """
         if metric is not None:
             self.energy_history.append(metric)
 
@@ -252,19 +328,15 @@ class Mobiu:
             # Record and check if warmup complete
             if self.warmup.record(metric, grad_norm):
                 self._configure_from_warmup()
+                # Restore params to initial state - the real run starts now
+                self._restore_params_state(self._initial_params_state)
+                # Reset step counter - user's real run starts at 0
+                self._step_count = 0
+                self._adaptive_step_count = 0
 
-        # Execute base step
-        if self._is_pytorch:
-            self._base_optimizer.step()
-        else:
-            # NumPy mode: apply local Adam step and return new params
-            if self._current_gradient is not None:
-                self._t += 1
-                self._m = 0.9 * self._m + 0.1 * self._current_gradient
-                self._v = 0.999 * self._v + 0.001 * (self._current_gradient ** 2)
-                m_hat = self._m / (1 - 0.9 ** self._t)
-                v_hat = self._v / (1 - 0.999 ** self._t)
-                self._params = self._params - self.base_lr * m_hat / (np.sqrt(v_hat) + 1e-8)
+        # During warmup: DO NOT update parameters
+        # Just return current params (unchanged)
+        if not self._is_pytorch:
             return self._params
 
     def _configure_from_warmup(self):
@@ -389,13 +461,7 @@ class Mobiu:
         )
 
         if should_sync:
-            old_lr = self.base_lr
             self._cloud_sync(metric)
-            if self.verbose:
-                if self.base_lr != old_lr:
-                    print(f"   [Sync @ step {self._step_count}] LR: {old_lr:.6f} → {self.base_lr:.6f}")
-                else:
-                    print(f"   [Sync @ step {self._step_count}] LR unchanged: {self.base_lr:.6f}")
 
         # 3. Execute optimizer step (EVERY step)
         return self._execute_step()
