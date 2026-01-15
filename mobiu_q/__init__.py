@@ -1,11 +1,27 @@
 """
 Mobiu-Q — Soft Algebra for Optimization & Attention
 ====================================================
-Version: 3.4.1
+Version: 3.6.0
 
 A framework built on Soft Algebra (nilpotent ε²=0) enabling:
 1. Stable optimization in noisy environments
 2. Efficient linear-time attention for long sequences
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 NEW: Simple API - Just like Adam!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    from mobiu_q import Mobiu
+
+    opt = Mobiu(model.parameters(), lr=0.001)
+
+    for batch in data:
+        loss = model(batch)
+        loss.backward()
+        opt.step(loss.item())
+
+Mobiu automatically detects your problem type and adapts!
+No configuration needed - it just works.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 STABLE API (Production Ready)
@@ -14,28 +30,19 @@ STABLE API (Production Ready)
 Classes:
     | Class          | Use Case                                   |
     |----------------|---------------------------------------------|
-    | MobiuOptimizer | PyTorch (RL, LLM, Deep Learning)           |
+    | Mobiu          | Simple API - auto-detects everything       |
+    | MobiuOptimizer | Manual config for advanced users           |
     | MobiuQCore     | Quantum (VQE, QAOA) & NumPy optimization   |
 
-Methods:
-    | Method   | Use Case                                    |
-    |----------|---------------------------------------------|
-    | standard | Smooth landscapes, chemistry, physics       |
-    | deep     | Deep circuits, noisy hardware, complex opt  |
-    | adaptive | RL, LLM fine-tuning, high-variance problems |
-
 Quick Start (PyTorch):
-    from mobiu_q import MobiuOptimizer
-    
-    base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-    opt = MobiuOptimizer(base_opt, method="adaptive", use_soft_algebra=True)
-    
+    from mobiu_q import Mobiu
+
+    opt = Mobiu(model.parameters(), lr=0.001)
+
     for batch in data:
         loss = criterion(model(batch))
         loss.backward()
         opt.step(loss.item())
-    
-    opt.end()
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🧪 EXPERIMENTAL API (Subject to Change)
@@ -68,21 +75,27 @@ License:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "3.4.1"
+__version__ = "3.6.0"
 __author__ = "Mobiu Technologies"
 
 # ============================================================================
 # STABLE API - Production Ready
 # ============================================================================
 
+# NEW: Simple adaptive optimizer
+from .adaptive import Mobiu
+
+# Note: Soft Algebra is cloud-only (protected IP)
+# LocalSoftAlgebra was removed - use Cloud API
+
 from .core import (
-    # Main optimizers
+    # Main optimizers (for advanced users)
     MobiuOptimizer,
     MobiuQCore,
     # Frustration Engine
     UniversalFrustrationEngine,
     # Gradient estimation
-    Demeasurement, 
+    Demeasurement,
     # Utilities
     get_default_lr,
     get_license_key,
@@ -109,7 +122,9 @@ from .core import (
 # ============================================================================
 
 __all__ = [
-    # === Stable API ===
+    # === NEW Simple API ===
+    "Mobiu",
+    # === Stable API (Advanced) ===
     # Optimizers
     "MobiuOptimizer",
     "MobiuQCore",

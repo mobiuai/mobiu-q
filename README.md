@@ -1,4 +1,4 @@
-# Mobiu-Q v3.4.1
+# Mobiu-Q v3.6.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -11,10 +11,9 @@
 
 Mobiu-Q is a framework built on **Soft Algebra** (nilpotent ε²=0) that provides:
 
-1. **MobiuOptimizer** - Stable optimization in noisy environments
-2. **MobiuAttention** 🧪 - O(N) linear attention for long sequences
-
-Both share the same mathematical foundation but serve different purposes.
+1. **Mobiu** 🆕 - Simple API that auto-detects everything (like Adam!)
+2. **MobiuOptimizer** - Manual configuration for advanced users
+3. **MobiuAttention** 🧪 - O(N) linear attention for long sequences
 
 ---
 
@@ -28,7 +27,35 @@ pip install mobiu-q
 
 ## Quick Start
 
-### MobiuOptimizer (Stable API)
+### 🆕 Simple API (Recommended)
+
+```python
+from mobiu_q import Mobiu
+
+# Just like Adam - no configuration needed!
+model = MyModel()
+opt = Mobiu(model.parameters(), lr=0.001)
+
+for batch in dataloader:
+    loss = criterion(model(batch))
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())  # That's it!
+```
+
+Mobiu automatically:
+- Detects if you're maximizing (reward) or minimizing (loss)
+- Selects the best optimization strategy
+- Adapts learning rate via Cloud Soft Algebra
+
+**Benchmarks with Simple API:**
+| Benchmark | Improvement | Win Rate |
+|-----------|-------------|----------|
+| Loss Minimization | **+54.3%** | 100% |
+| Noisy Labels | **+50.8%** | 100% |
+| VQE H₂ | **+35.8%** | 100% |
+
+### MobiuOptimizer (Advanced)
 
 ```python
 from mobiu_q import MobiuOptimizer
