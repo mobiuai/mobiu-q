@@ -1,4 +1,4 @@
-# Mobiu-Q v3.8.2
+# Mobiu-Q v3.8.3
 
 **Soft Algebra for Optimization & Attention**
 
@@ -797,18 +797,19 @@ base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
 
 Standard Transformer attention is O(N²) in sequence length. MobiuAttention is **O(N)**.
 
-| Seq Length | Transformer | MobiuAttention | Speedup |
-|------------|-------------|----------------|---------|
-| 2,048      | 21s         | 9s             | 2.3x    |
-| 4,096      | 39s         | 10s            | 3.9x    |
-| 8,192      | 42s         | 7s             | 6.0x    |
-| 16,384     | **OOM** 💥  | 5s ✅          | ∞       |
+| Seq Length | Transformer | MobiuAttention | Speedup | Memory Saving |
+|------------|-------------|----------------|---------|---------------|
+| 4,096      | 16.9ms      | 16.4ms         | ~1x     | ~Equal        |
+| 8,192      | 75.3ms      | **33.8ms**     | **2.2x** ✅ | **50%** ✅   |
+| 16,384     | **OOM** 💥  | Works          | ∞       | ∞             |
+
+*Tested on T4 GPU, batch=2, d_model=128*
 
 ### Quality (Same as Transformer)
 
 | Benchmark            | Transformer | MobiuAttention |
 |----------------------|-------------|----------------|
-| Shakespeare PPL      | 12.8        | 13.5           |
+| Shakespeare PPL      | 12.8        | **12.2** ✅            |
 | ListOps Accuracy     | 81%         | 82%            |
 | Needle-in-Haystack   | 100%        | 100%           |
 
@@ -833,6 +834,21 @@ model = LongContextLM(50000)
 x = torch.randint(0, 50000, (1, 16384))
 out = model(x)  # No OOM!
 ```
+
+### When to Use MobiuAttention
+
+| Scenario | Recommendation |
+|----------|----------------|
+| **GPU + seq > 4K** | ✅ **Use MobiuAttention** - 2x faster, 50% less memory |
+| **GPU + seq < 4K** | Standard Transformer is fine |
+| **Apple Silicon (MPS)** | Equal quality, Transformer slightly faster |
+| **Very long context (>8K)** | ✅ **MobiuAttention only option** - Transformer OOMs |
+
+**Key insight:** MobiuAttention maintains the same quality (PPL) while enabling 
+longer contexts that would otherwise cause out-of-memory errors.
+
+**Note:** MobiuAttention runs **100% locally** - no API calls, no license key needed.
+It's included in the `mobiu-q` package but operates independently of the cloud service.
 
 ### ⚠️ Experimental Status
 
@@ -889,6 +905,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_noisy_labels_fair.py` | Noisy | Noisy labels benchmark |
 | `test_sim_to_real_fair.py` | Robotics | Sim-to-real benchmark |
 | `test_imbalanced_fair.py` | Classification | Imbalanced data benchmark |
+| `test_mobiu_attention_real.py` | Attention | Shakespeare + Code + Scaling benchmarks |
 
 ---
 
