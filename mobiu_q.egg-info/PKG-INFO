@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 3.8.3
+Version: 3.8.4
 Summary: Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -34,7 +34,7 @@ Provides-Extra: quantum
 Requires-Dist: qiskit>=0.40.0; extra == "quantum"
 Requires-Dist: pennylane>=0.28.0; extra == "quantum"
 
-# Mobiu-Q v3.8.3
+# Mobiu-Q v3.8.4
 
 **Soft Algebra for Optimization & Attention**
 
@@ -845,7 +845,7 @@ Standard Transformer attention is O(N²) in sequence length. MobiuAttention is *
 
 | Benchmark            | Transformer | MobiuAttention |
 |----------------------|-------------|----------------|
-| Shakespeare PPL      | 12.8        | **12.2** ✅            |
+| Shakespeare PPL      | 12.3        | **12.2** ✅            |
 | ListOps Accuracy     | 81%         | 82%            |
 | Needle-in-Haystack   | 100%        | 100%           |
 
@@ -885,6 +885,34 @@ longer contexts that would otherwise cause out-of-memory errors.
 
 **Note:** MobiuAttention runs **100% locally** - no API calls, no license key needed.
 It's included in the `mobiu-q` package but operates independently of the cloud service.
+
+### ⚠️ Combining MobiuAttention with MobiuOptimizer
+
+Based on our testing, **combining both products may cause interference**:
+
+| Configuration | PPL | Result |
+|---------------|-----|--------|
+| Standard + Adam | 11.86 | Baseline |
+| Standard + MobiuOptimizer | **3.85** | ✅ Best! (+67.5%) |
+| MobiuAttention + Adam | 11.05 | Good (+6.8%) |
+| MobiuAttention + MobiuOptimizer | 9.84 | ⚠️ Interference (+17%) |
+
+**Recommendation:**
+- For **best quality**: Use MobiuOptimizer alone (Standard Attention)
+- For **long context (>4K tokens)**: Use MobiuAttention alone
+- **Don't combine** unless you've tested on your specific use case
+
+### Verified Performance (Fair A/B Test)
+
+**Shakespeare Language Modeling:**
+| Configuration | PPL | Improvement |
+|---------------|-----|-------------|
+| Adam (baseline) | 11.86 | - |
+| **MobiuOptimizer (adaptive)** | **3.85** | **+67.5%** ✅ |
+
+*Same API, same hyperparameters, only `use_soft_algebra` differs*
+
+**Key Insight:** Soft Algebra provides real value - not just adaptive LR!
 
 ### ⚠️ Experimental Status
 
@@ -942,6 +970,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_sim_to_real_fair.py` | Robotics | Sim-to-real benchmark |
 | `test_imbalanced_fair.py` | Classification | Imbalanced data benchmark |
 | `test_mobiu_attention_real.py` | Attention | Shakespeare + Code + Scaling benchmarks |
+| `test_double_mobiu.py` | Fair A/B Test | Soft Algebra ON vs OFF comparison |
 
 ---
 
