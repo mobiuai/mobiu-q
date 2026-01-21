@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.8.4 - Frustration Engine for Quantum
+Version: 3.8.5 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -505,7 +505,13 @@ class _MobiuPyTorchBackend:
         self.api_endpoint = API_ENDPOINT
         
         # Get base LR from optimizer
-        self.base_lr = optimizer.param_groups[0]['lr']
+        # Get LR from optimizer, but use method default if it's PyTorch's default (0.001)
+        optimizer_lr = optimizer.param_groups[0]['lr']
+        default_lrs = {"standard": 0.01, "deep": 0.1, "adaptive": 0.0003}
+        if optimizer_lr == 0.001:  # PyTorch Adam default
+            self.base_lr = default_lrs.get(method, 0.01)
+        else:
+            self.base_lr = optimizer_lr
         
         # Frustration Engine
         self.maximize = maximize
@@ -1469,7 +1475,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.8.4"
+__version__ = "3.8.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

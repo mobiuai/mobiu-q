@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 3.8.4
+Version: 3.8.5
 Summary: Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -34,7 +34,7 @@ Provides-Extra: quantum
 Requires-Dist: qiskit>=0.40.0; extra == "quantum"
 Requires-Dist: pennylane>=0.28.0; extra == "quantum"
 
-# Mobiu-Q v3.8.4
+# Mobiu-Q v3.8.5
 
 **Soft Algebra for Optimization & Attention**
 
