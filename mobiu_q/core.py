@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.8.6 - Frustration Engine for Quantum
+Version: 3.8.7 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -657,6 +657,7 @@ class _MobiuPyTorchBackend:
                         self.base_lr = data['adaptive_lr']
                         for pg in self.optimizer.param_groups:
                             pg['lr'] = data['adaptive_lr']
+                        self.lr_history.append(data['adaptive_lr'])
                     
                     # NEW: Apply gradient warping from server
                     warp_factor = data.get('warp_factor', 1.0)
@@ -1479,7 +1480,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.8.6"
+__version__ = "3.8.7"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
