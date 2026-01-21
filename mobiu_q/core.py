@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 3.8.5 - Frustration Engine for Quantum
+Version: 3.8.6 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -309,6 +309,7 @@ class MobiuOptimizer:
                 optimizer_or_params, 
                 self.license_key, 
                 self.method,
+                base_lr=kwargs.get('base_lr'),
                 use_soft_algebra=use_soft_algebra,
                 sync_interval=sync_interval,
                 maximize=maximize,
@@ -494,6 +495,7 @@ class _MobiuPyTorchBackend:
     """
     
     def __init__(self, optimizer, license_key: str, method: str, 
+                base_lr: Optional[float] = None,
                 use_soft_algebra: bool = True, sync_interval: int = 50,
                 maximize: bool = False, verbose: bool = True):
         self.optimizer = optimizer
@@ -504,14 +506,16 @@ class _MobiuPyTorchBackend:
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
         
-        # Get base LR from optimizer
-        # Get LR from optimizer, but use method default if it's PyTorch's default (0.001)
-        optimizer_lr = optimizer.param_groups[0]['lr']
-        default_lrs = {"standard": 0.01, "deep": 0.1, "adaptive": 0.0003}
-        if optimizer_lr == 0.001:  # PyTorch Adam default
-            self.base_lr = default_lrs.get(method, 0.01)
+        # Get LR: explicit base_lr > optimizer default logic
+        if base_lr is not None:
+            self.base_lr = base_lr
         else:
-            self.base_lr = optimizer_lr
+            optimizer_lr = optimizer.param_groups[0]['lr']
+            default_lrs = {"standard": 0.01, "deep": 0.1, "adaptive": 0.0003}
+            if optimizer_lr == 0.001:  # PyTorch Adam default
+                self.base_lr = default_lrs.get(method, 0.01)
+            else:
+                self.base_lr = optimizer_lr
         
         # Frustration Engine
         self.maximize = maximize
@@ -1475,7 +1479,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "3.8.5"
+__version__ = "3.8.6"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

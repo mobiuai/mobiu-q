@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 3.8.5
+Version: 3.8.6
 Summary: Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -34,7 +34,7 @@ Provides-Extra: quantum
 Requires-Dist: qiskit>=0.40.0; extra == "quantum"
 Requires-Dist: pennylane>=0.28.0; extra == "quantum"
 
-# Mobiu-Q v3.8.5
+# Mobiu-Q v3.8.6
 
 **Soft Algebra for Optimization & Attention**
 
@@ -75,12 +75,20 @@ LICENSE_KEY = "your-license-key-here"
 
 # Wrap any PyTorch optimizer
 model = MyModel()
-base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
+base_opt = torch.optim.Adam(model.parameters())
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
-    method="adaptive",
+    method="adaptive",  # LR auto-set to 0.0003
     use_soft_algebra=True
+)
+
+# Or with explicit LR:
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=0.001  # Override default LR
 )
 
 for batch in dataloader:
@@ -154,6 +162,8 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 | `standard` | Smooth landscapes, chemistry, physics       | 0.01       |
 | `deep`     | Deep circuits, noisy hardware, complex opt  | 0.1        |
 | `adaptive` | RL, LLM fine-tuning, high-variance problems | 0.0003     |
+
+**Note:** Default LR is auto-applied in PyTorch mode. Override with `base_lr=...` if needed.
 
 ### Benchmarks
 
