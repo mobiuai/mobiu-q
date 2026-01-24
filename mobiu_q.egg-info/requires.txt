@@ -2,6 +2,14 @@ numpy>=1.21.0
 requests>=2.25.0
 torch>=1.9.0
 
+[all]
+qiskit>=0.40.0
+pennylane>=0.28.0
+pyod>=1.0.0
+
+[detection]
+pyod>=1.0.0
+
 [dev]
 pytest>=7.0
 pytest-cov

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "3.8.7"
-description = "Soft Algebra Optimizer + O(N) Linear Attention for Long Context LLMs"
+version = "3.9.0"
+description = "Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection"
 readme = "README.md"
 license = {text = "Proprietary"}
 authors = [
@@ -25,6 +25,10 @@ keywords = [
     "linear-attention",
     "long-context",
     "llm",
+    "anomaly-detection",
+    "streaming",
+    "trainguard",
+    "monitoring",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -57,6 +61,14 @@ dev = [
 quantum = [
     "qiskit>=0.40.0",
     "pennylane>=0.28.0",
+]
+detection = [
+    "pyod>=1.0.0",
+]
+all = [
+    "qiskit>=0.40.0",
+    "pennylane>=0.28.0",
+    "pyod>=1.0.0",
 ]
 
 [project.urls]

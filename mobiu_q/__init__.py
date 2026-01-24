@@ -1,7 +1,7 @@
 """
 Mobiu-Q — Soft Algebra for Optimization & Attention
 ====================================================
-Version: 3.8.7
+Version: 3.9.0
 
 A framework built on Soft Algebra (nilpotent ε²=0) enabling:
 1. Stable optimization in noisy environments
@@ -68,7 +68,7 @@ License:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "3.8.7"
+__version__ = "3.9.0"
 __author__ = "Mobiu Technologies"
 
 # ============================================================================
@@ -104,6 +104,32 @@ from .core import (
 # Don't import experimental at top level - let users import explicitly
 # This avoids requiring torch for quantum-only users
 
+
+# ===============================================
+# Detection Module (NEW in v3.9.0)
+# ===============================================
+
+from .detection import (
+    MobiuAD,
+    MobiuADLocal,
+    DetectionResult,
+    BatchResult,           
+    detect_anomalies,      
+    find_transitions,      
+    TrainGuard,
+    TrainGuardResult,
+)
+
+# Enhanced detection (requires PyOD)
+try:
+    from .detection import (
+        MobiuADEnhanced,
+        EnhancedDetectionResult,
+        detect_anomalies_enhanced,
+    )
+except ImportError:
+    pass
+
 # ============================================================================
 # PUBLIC API
 # ============================================================================
@@ -128,3 +154,17 @@ __all__ = [
     "VALID_METHODS",
     "API_ENDPOINT",
 ]
+
+__all__.extend([
+    "MobiuAD",
+    "MobiuADLocal",
+    "DetectionResult",
+    "BatchResult",              
+    "detect_anomalies",         
+    "find_transitions",         
+    "TrainGuard",
+    "TrainGuardResult",
+    "MobiuADEnhanced",
+    "EnhancedDetectionResult",
+    "detect_anomalies_enhanced",
+])

@@ -1,4 +1,4 @@
-# Mobiu-Q v3.8.7
+# Mobiu-Q v3.9.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -13,8 +13,8 @@ Mobiu-Q is a framework built on **Soft Algebra** (nilpotent ε²=0) that provide
 
 1. **MobiuOptimizer** - Stable optimization in noisy environments
 2. **MobiuAttention** 🧪 - O(N) linear attention for long sequences
-
-Both share the same mathematical foundation but serve different purposes.
+3. **MobiuAD** 🆕 - Streaming anomaly detection        
+4. **TrainGuard** 🆕 - Safe ML training monitor        
 
 ---
 
@@ -31,7 +31,7 @@ pip install mobiu-q
 ### MobiuOptimizer (Stable API)
 
 ```python
-from mobiu_q import MobiuOptimizer
+from mobiu_q import MobiuOptimizer, MobiuAD, TrainGuard
 import torch
 
 # Your license key (get one at https://app.mobiu.ai)
@@ -86,6 +86,21 @@ out = attn(x)  # x: [batch, seq, dim]
 # Or use complete block
 block = MobiuBlock(d_model=512, num_heads=8)
 out = block(x)
+```
+
+### MobiuAD (🆕 NEW in v3.9.0)
+```python
+from mobiu_q import MobiuAD, TrainGuard
+
+LICENSE_KEY = "your-license-key-here"
+
+# Streaming anomaly detection
+detector = MobiuAD(license_key=LICENSE_KEY)
+result = detector.detect(value)
+
+# Training monitor (Q + AD combined)
+guard = TrainGuard(license_key=LICENSE_KEY)
+result = guard.step(loss, gradient, val_loss)
 ```
 
 ---
@@ -896,6 +911,134 @@ Based on our testing, **combining both products may cause interference**:
 
 ---
 
+## 🛡️ Anomaly Detection (NEW in v3.9.0)
+
+Mobiu-Q now includes **anomaly detection** using the same Soft Algebra mathematics as the optimizer.
+
+### MobiuAD - Streaming Detector
+
+Detect anomalies in real-time data streams:
+
+```python
+from mobiu_q import MobiuAD
+
+LICENSE_KEY = "your-license-key-here"
+
+detector = MobiuAD(license_key=LICENSE_KEY, method="deep")
+
+for value in data_stream:
+    result = detector.detect(value)
+    if result.is_anomaly:
+        print(f"⚠️ Anomaly! Δ†={result.delta_dagger:.4f}")
+```
+
+### Detection Methods
+
+| Method | Use Case | Best For |
+|--------|----------|----------|
+| `standard` | Trust Ratio based | Simple anomalies |
+| `deep` | Super-Equation Δ† | Behavioral changes (recommended) |
+| `transition` | Regime detection | Pattern shifts |
+
+### TrainGuard - Safe ML Training
+
+Combines MobiuOptimizer + MobiuAD to monitor training health:
+
+```python
+from mobiu_q import TrainGuard
+
+LICENSE_KEY = "your-license-key-here"
+
+guard = TrainGuard(license_key=LICENSE_KEY)
+
+for epoch in range(100):
+    loss = train_epoch(model)
+    val_loss = evaluate(model)
+    gradient = get_gradient_norm(model)
+    
+    result = guard.step(
+        loss=loss,
+        gradient=gradient,
+        val_loss=val_loss
+    )
+    
+    # Apply optimized gradient
+    apply_gradient(result.adjusted_gradient)
+    
+    # Check for training issues
+    if result.alert:
+        if result.alert_type == 'GRADIENT_EXPLOSION':
+            print("💥 Gradient explosion detected!")
+            reduce_lr()
+        elif result.alert_type == 'OVERFITTING':
+            print("📈 Overfitting detected!")
+            apply_regularization()
+        elif result.alert_type == 'LOSS_SPIKE':
+            print("⚡ Loss spike detected!")
+            restore_checkpoint()
+
+guard.end()
+```
+
+### TrainGuard Alerts
+
+| Alert Type | Trigger | Suggested Action |
+|------------|---------|------------------|
+| `GRADIENT_EXPLOSION` | Gradient norm spike | Reduce LR, clip gradients |
+| `OVERFITTING` | Val loss ↑ while train loss ↓ | Early stop, regularize |
+| `LOSS_SPIKE` | Sudden loss increase | Restore checkpoint |
+| `PLATEAU` | No improvement | Increase LR, change optimizer |
+
+### Batch Detection
+
+```python
+from mobiu_q import MobiuAD
+
+LICENSE_KEY = "your-license-key-here"
+
+detector = MobiuAD(license_key=LICENSE_KEY)
+
+# Detect anomalies in batch
+results = detector.detect_batch(data_array)
+print(f"Found {results.total_anomalies} anomalies at indices: {results.anomaly_indices}")
+```
+
+### MobiuAD vs PyOD
+
+| Feature | MobiuAD | PyOD |
+|---------|---------|------|
+| **Type** | Streaming | Batch |
+| **Detects** | Behavioral changes | Statistical outliers |
+| **Real-time** | ✅ Yes | ❌ No |
+| **Early warning** | ✅ Yes | ❌ No |
+| **Pattern changes** | ✅ Excellent | ⚠️ Limited |
+| **Value outliers** | ⚠️ Good | ✅ Excellent |
+
+**Use MobiuAD when:**
+- Real-time streaming detection needed
+- Detecting behavioral/pattern changes
+- Early warning before anomalies manifest
+- Monitoring ML training (TrainGuard)
+
+**Use PyOD when:**
+- Batch analysis of static data
+- Detecting statistical outliers
+- Value-based anomaly detection
+
+### Enhanced Detection (PyOD + Soft Algebra)
+
+Combine both approaches for maximum coverage:
+
+```python
+from mobiu_q.detection import MobiuADEnhanced
+
+# Requires: pip install pyod
+detector = MobiuADEnhanced(base_detector="IForest")
+results = detector.detect_batch(data)
+```
+
+---
+
 ## How It Works
 
 ### Soft Algebra
@@ -924,6 +1067,14 @@ S(t) = γ·S(t-1) + k_t ⊗ v_t  # O(N) state update
 
 Instead of O(N²) pairwise attention, we track state with O(N) complexity.
 
+### In Anomaly Detection
+
+```python
+Δ† = |a_t + i·b_t|  # Super-Equation score
+```
+
+Soft Algebra tracks behavioral patterns and detects deviations.
+
 ---
 
 ## Full Examples
@@ -945,6 +1096,8 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_imbalanced_fair.py` | Classification | Imbalanced data benchmark |
 | `test_mobiu_attention_real.py` | Attention | Shakespeare + Code + Scaling benchmarks |
 | `test_double_mobiu.py` | Fair A/B Test | Soft Algebra ON vs OFF comparison |
+| `test_trainguard.py` | Training | TrainGuard monitoring demo |
+| `benchmark_behavioral.py` | Detection | Behavioral anomaly benchmark |
 
 ---
 
@@ -970,7 +1123,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 
 ```bibtex
 @software{mobiu_q,
-  title={Mobiu-Q: Soft Algebra for Optimization and Attention},
+  title={Mobiu-Q: Soft Algebra for Optimization, Attention and Anomaly Detection},
   author={Mobiu Technologies},
   year={2026},
   url={https://mobiu.ai}
