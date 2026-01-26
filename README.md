@@ -1,4 +1,4 @@
-# Mobiu-Q v4.0.0
+# Mobiu-Q v4.0.1
 
 **Soft Algebra for Optimization & Attention**
 
@@ -172,6 +172,7 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 | Crypto Trading          | **+56%** profit | 100% | <0.001  |
 | LunarLander-v3          | +128%       | 97%      | <0.001  |
 | MuJoCo InvertedPendulum | +111%       | 100%     | <0.001  |
+| RL Trading (MobiuSignal) | **+168%** | 83% | <0.001 |
 
 #### Quantum Computing
 
@@ -828,6 +829,16 @@ for episode in range(500):
 
 opt.end()
 ```
+
+**Validated Results (30 seeds, 500 episodes, regime switching):**
+
+| Metric | Adam | Mobiu | Δ |
+|--------|------|-------|---|
+| Final PnL | -4.7 | +3.2 | **+168.7%** |
+| Win Rate | - | 83.3% | 25/30 seeds |
+| p-value | - | - | 0.000012 |
+
+*Adam lost money on average; Mobiu turned it profitable.*
 
 See `examples/rl_trading_mobiu_benchmark.py` for full implementation.
 
