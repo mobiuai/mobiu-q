@@ -1,4 +1,4 @@
-# Mobiu-Q v3.10.0
+# Mobiu-Q v4.0.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -626,6 +626,9 @@ for episode in range(500):
 opt.end()
 ```
 
+**Tip:** For even better results, use MobiuSignal features as your state representation. 
+See the MobiuSignal section for integration example.
+
 ---
 
 ### Stable-Baselines3 (PPO, SAC, etc.)
@@ -776,6 +779,57 @@ print(f"Found {len(strong)} strong signals out of {len(results)}")
 | Low volatility | Higher `vol_scale` |
 
 **Note:** MobiuSignal runs **100% locally** - no API calls, no license key needed.
+
+---
+
+### Integration with MobiuOptimizer (RL Trading)
+
+Combine MobiuSignal features with MobiuOptimizer for RL-based trading:
+```python
+from mobiu_q import MobiuOptimizer
+from mobiu_q.signal import MobiuSignal
+import torch
+import torch.nn as nn
+
+LICENSE_KEY = "your-license-key-here"
+
+# Policy uses MobiuSignal features as state
+class TradingPolicy(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(5, 64), nn.Tanh(),
+            nn.Linear(64, 64), nn.Tanh(),
+            nn.Linear(64, 3)  # Hold, Buy, Sell
+        )
+    
+    def forward(self, signal_features):
+        # signal_features: [potential, realized, magnitude, position, pnl]
+        return self.net(signal_features)
+
+# Setup
+signal = MobiuSignal(lookback=20)
+policy = TradingPolicy()
+base_opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    maximize=True,  # Maximize profit!
+    use_soft_algebra=True
+)
+
+# Training loop
+for episode in range(500):
+    signal.reset()
+    # ... collect episode using signal.update(price) for state ...
+    # ... REINFORCE update ...
+    opt.step(episode_profit)
+
+opt.end()
+```
+
+See `examples/rl_trading_mobiu_benchmark.py` for full implementation.
 
 ---
 
@@ -1221,6 +1275,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_trainguard.py` | Training | TrainGuard monitoring demo |
 | `benchmark_behavioral.py` | Detection | Behavioral anomaly benchmark |
 | `example_signal.py` | Trading | MobiuSignal demo |
+| `rl_trading_mobiu_benchmark.py` | Trading | RL Trading with MobiuSignal + regime switching |
 
 ---
 
