@@ -1,4 +1,4 @@
-# Mobiu-Q v3.9.0
+# Mobiu-Q v3.10.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -13,8 +13,9 @@ Mobiu-Q is a framework built on **Soft Algebra** (nilpotent ε²=0) that provide
 
 1. **MobiuOptimizer** - Stable optimization in noisy environments
 2. **MobiuAttention** 🧪 - O(N) linear attention for long sequences
-3. **MobiuAD** 🆕 - Streaming anomaly detection        
-4. **TrainGuard** 🆕 - Safe ML training monitor        
+3. **MobiuSignal** 🆕 - Trading signals using Soft Algebra
+4. **MobiuAD** - Streaming anomaly detection        
+5. **TrainGuard** - Safe ML training monitor      
 
 ---
 
@@ -101,6 +102,24 @@ result = detector.detect(value)
 # Training monitor (Q + AD combined)
 guard = TrainGuard(license_key=LICENSE_KEY)
 result = guard.step(loss, gradient, val_loss)
+```
+
+### MobiuSignal (🆕 NEW in v3.10.0)
+```python
+from mobiu_q.signal import MobiuSignal
+
+# No license required - runs locally!
+signal = MobiuSignal(lookback=20)
+
+# Compute signal from prices
+result = signal.compute(prices)
+if result.is_strong:
+    print(f"Strong {'📈' if result.is_bullish else '📉'} signal: {result.magnitude:.2f}")
+
+# Backtest on historical data
+backtest = signal.backtest(historical_prices, future_window=5)
+print(f"Correlation: {backtest.correlation:.3f}")
+print(f"Q4/Q1 Ratio: {backtest.q4_q1_ratio:.2f}x")
 ```
 
 ---
@@ -607,6 +626,8 @@ for episode in range(500):
 opt.end()
 ```
 
+---
+
 ### Stable-Baselines3 (PPO, SAC, etc.)
 
 SB3 calls `optimizer.step()` internally without arguments. Use `set_metric()` to provide the reward:
@@ -663,6 +684,98 @@ env = gym.make("LunarLander-v3")
 model = PPO("MlpPolicy", env, learning_rate=3e-4, verbose=0)
 model.learn(total_timesteps=200_000, callback=MobiuSB3Callback())
 ```
+
+---
+
+## MobiuSignal 🆕
+
+Trading signal generator using the same Soft Algebra potential/realized framework.
+
+### Validated Results (3,080 days BTC/USDT)
+
+| Metric | Result |
+|--------|--------|
+| Spearman correlation | **+0.222** (p<0.0001) |
+| Q4/Q1 ratio | **1.83x** larger moves |
+| Precision lift | **1.18x** vs random |
+
+### Mathematical Framework
+```
+Potential (aₜ) = σₜ/μₜ × scale    # Normalized volatility
+Realized (bₜ)  = (Pₜ - Pₜ₋₁)/Pₜ₋₁  # Price change
+Magnitude      = √(aₜ² + bₜ²)      # Signal strength
+```
+
+### Usage
+```python
+from mobiu_q.signal import MobiuSignal, SignalResult
+
+# Basic usage
+signal = MobiuSignal(lookback=20, vol_scale=100)
+result = signal.compute(prices)
+
+print(f"Potential: {result.potential:.3f}")
+print(f"Realized: {result.realized:.3f}%")
+print(f"Magnitude: {result.magnitude:.3f}")
+print(f"Direction: {result.direction}")  # +1, -1, or 0
+print(f"Quartile: Q{result.quartile}")   # 1-4 (4=strongest)
+
+# Check signal strength
+if result.is_strong:  # Top quartile
+    if result.is_bullish:
+        print("🚀 Strong bullish signal!")
+    else:
+        print("🔻 Strong bearish signal!")
+```
+
+### Streaming Mode
+```python
+signal = MobiuSignal(lookback=20)
+
+for price in live_price_stream:
+    result = signal.update(price)
+    if result and result.is_strong:
+        execute_trade(result.direction)
+```
+
+### Backtesting
+```python
+from mobiu_q.signal import MobiuSignal, backtest_signal
+
+# Full backtest
+signal = MobiuSignal(lookback=20)
+result = signal.backtest(prices, future_window=5)
+
+print(f"Total signals: {result.total_signals}")
+print(f"Strong signals: {result.strong_signals}")
+print(f"Correlation: {result.correlation:.3f} (p={result.correlation_pvalue:.4f})")
+print(f"Q4/Q1 Ratio: {result.q4_q1_ratio:.2f}x")
+print(f"Precision Lift: {result.precision_lift:.2f}x")
+
+# Quick backtest
+result = backtest_signal(prices, lookback=20, future_window=5)
+```
+
+### Series Analysis
+```python
+signal = MobiuSignal(lookback=20)
+results = signal.compute_series(prices)
+
+# Find all strong signals
+strong = [r for r in results if r.is_strong]
+print(f"Found {len(strong)} strong signals out of {len(results)}")
+```
+
+### When to Use
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Day trading | `lookback=10-20` |
+| Swing trading | `lookback=20-50` |
+| High volatility | Lower `vol_scale` |
+| Low volatility | Higher `vol_scale` |
+
+**Note:** MobiuSignal runs **100% locally** - no API calls, no license key needed.
 
 ---
 
@@ -1075,6 +1188,15 @@ Instead of O(N²) pairwise attention, we track state with O(N) complexity.
 
 Soft Algebra tracks behavioral patterns and detects deviations.
 
+### In Signal Generation
+```python
+a_t = volatility / mean_price    # Potential: what COULD happen
+b_t = price_change               # Realized: what DID happen
+signal = √(a² + b²)              # Interaction magnitude
+```
+
+Soft Algebra detects when high potential meets significant realization.
+
 ---
 
 ## Full Examples
@@ -1098,6 +1220,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_double_mobiu.py` | Fair A/B Test | Soft Algebra ON vs OFF comparison |
 | `test_trainguard.py` | Training | TrainGuard monitoring demo |
 | `benchmark_behavioral.py` | Detection | Behavioral anomaly benchmark |
+| `example_signal.py` | Trading | MobiuSignal demo |
 
 ---
 
@@ -1108,7 +1231,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
 | Pro | Unlimited | $19/month | [Get one](https://app.mobiu.ai) |
 
-**Note:** MobiuAttention runs locally, no API calls required.
+**Note:** MobiuAttention & MobiuSignal run locally, no API calls required.
 
 ---
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "3.9.0"
+version = "3.10.0"
 description = "Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection"
 readme = "README.md"
 license = {text = "Proprietary"}
@@ -48,6 +48,7 @@ dependencies = [
     "numpy>=1.21.0",
     "requests>=2.25.0",
     "torch>=1.9.0",
+    "scipy",
 ]
 
 [project.optional-dependencies]

@@ -1,7 +1,7 @@
 """
 Mobiu-Q — Soft Algebra for Optimization & Attention
 ====================================================
-Version: 3.9.0
+Version: 3.10.0
 
 A framework built on Soft Algebra (nilpotent ε²=0) enabling:
 1. Stable optimization in noisy environments
@@ -60,15 +60,37 @@ Quick Start:
     Please report issues at https://github.com/mobiu-ai/mobiu-q
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🆕 MOBIU SIGNAL (In Development)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MobiuSignal - Trading signals using Soft Algebra potential/realized framework
+
+Validated on 3,080 days BTC/USDT:
+    - Spearman correlation: +0.222 (p<0.0001)
+    - Q4/Q1 ratio: 1.83x larger moves in top quartile  
+    - Precision lift: 1.18x vs random baseline
+
+Quick Start:
+    from mobiu_q.signal import MobiuSignal
+    
+    signal = MobiuSignal(lookback=20)
+    result = signal.compute(prices)
+    
+    if result.is_strong:
+        print(f"Strong signal: {result.direction}, magnitude: {result.magnitude:.2f}")
+
+⚠️  IN DEVELOPMENT: API may change. Runs locally, no license required.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 License:
     Free tier: 20 API calls/month (optimizer only)
     Pro tier: Unlimited - https://app.mobiu.ai
     
-    Note: MobiuAttention runs locally, no API calls required.
+    Note: MobiuAttention & MobiuSignal run locally, no API calls required.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "3.9.0"
+__version__ = "3.10.0"
 __author__ = "Mobiu Technologies"
 
 # ============================================================================
@@ -98,6 +120,13 @@ from .core import (
 )
 
 # ============================================================================
+# SIGNAL MODULE (In Development) - Runs locally, no license required
+# ============================================================================
+
+# Lazy loaded to avoid scipy dependency for basic users
+# Users should import explicitly: from mobiu_q.signal import MobiuSignal
+
+# ============================================================================
 # EXPERIMENTAL API - Lazy loaded to avoid torch dependency for quantum users
 # ============================================================================
 
@@ -106,7 +135,7 @@ from .core import (
 
 
 # ===============================================
-# Detection Module (NEW in v3.9.0)
+# Detection Module (MobiuAD)
 # ===============================================
 
 from .detection import (

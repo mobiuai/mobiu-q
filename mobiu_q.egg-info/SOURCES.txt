@@ -16,3 +16,5 @@ mobiu_q/detection/trainguard.py
 mobiu_q/experimental/__init__.py
 mobiu_q/experimental/layers.py
 mobiu_q/experimental/layers_fast.py
+mobiu_q/signal/__init__.py
+mobiu_q/signal/signal.py
