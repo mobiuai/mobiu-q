@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 4.0.1
+Version: 4.1.0
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v4.0.1
+# Mobiu-Q v4.1.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -889,74 +889,21 @@ See `examples/rl_trading_mobiu_benchmark.py` for full implementation.
 
 ## Base Optimizers
 
-Mobiu-Q enhances these base optimizers with Soft Algebra:
-
-| Optimizer | Description | Best For |
-|-----------|-------------|----------|
-| `Adam` | Adaptive moments, most popular | Default, most cases |
-| `AdamW` | Adam with decoupled weight decay | LLM, Transformers |
-| `NAdam` | Adam with Nesterov momentum | Alternative to Adam |
-| `AMSGrad` | Adam with max(v) for stability | Drug discovery, unstable loss |
-| `SGD` | Simple gradient descent | QAOA, convex problems |
-| `Momentum` | SGD with momentum | RL, LLM fine-tuning |
-| `LAMB` | Layer-wise adaptive scaling | Large batch training |
-
-### Choosing an Optimizer
-
-**PyTorch mode** - Choose your optimizer when creating the base optimizer:
+### PyTorch Mode
+Use **any** PyTorch optimizer - Mobiu-Q wraps it with Soft Algebra:
 
 ```python
-import torch
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Using Adam (default, recommended for most cases)
+# Any of these work:
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-
-# Using AdamW (recommended for LLM/Transformers)
-base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=0.01)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-
-# Using SGD with Momentum (recommended for RL)
+base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003)
 base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", maximize=True)
-
-# Using NAdam
-base_opt = torch.optim.NAdam(model.parameters(), lr=0.0003)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="deep")
 ```
 
-**Quantum mode** - Choose your optimizer via the `base_optimizer` parameter:
+**Quantum mode** - Uses Adam (server-side):
 
 ```python
-from mobiu_q import MobiuOptimizer
-import numpy as np
-
-LICENSE_KEY = "your-license-key-here"
-params = np.random.randn(10)
-
-# Using Adam (default)
 opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
-
-# Using NAdam
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard", base_optimizer="NAdam")
-
-# Using AMSGrad
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="deep", base_optimizer="AMSGrad")
 ```
-
-**⚠️ Important:** Optimizer names are **case-sensitive!**
-
-```python
-# ✅ Correct
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="NAdam")
-
-# ❌ Wrong - will fall back to Adam
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="nadam")
-```
-
 ---
 
 ## 🛠️ Troubleshooting
@@ -969,16 +916,16 @@ Different optimizers work better for different problems:
 
 | Problem Type | Recommended Optimizer |
 |--------------|----------------------|
-| LoRA / LLM | `Momentum` or `AdamW` |
-| VQE / Chemistry | `Adam` |
-| QAOA | `NAdam` |
-| RL / Trading | `Momentum` |
-| Drug Discovery | `AMSGrad` |
-| Large Batch | `LAMB` |
-| Federated Learning | `Adam` |
-| Imbalanced Data | `Adam` |
-| Sim-to-Real | `Adam` + `adaptive` |
-| Noisy Labels | `Adam` |
+| LoRA / LLM | `torch.optim.SGD` with momentum |
+| VQE / Chemistry | `torch.optim.Adam` |
+| QAOA | `torch.optim.NAdam` |
+| RL / Trading | `torch.optim.SGD` with momentum |
+| Drug Discovery | `torch.optim.Adam(amsgrad=True)` |
+| Large Batch | LAMB (from `apex` or custom) |
+| Federated Learning | `torch.optim.Adam` |
+| Imbalanced Data | `torch.optim.Adam` |
+| Sim-to-Real | `torch.optim.Adam` + `adaptive` |
+| Noisy Labels | `torch.optim.Adam` |
 
 ```python
 LICENSE_KEY = "your-license-key-here"
@@ -986,9 +933,6 @@ LICENSE_KEY = "your-license-key-here"
 # PyTorch: If Adam isn't working, try Momentum:
 base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
 opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-
-# Quantum: If Adam isn't working, try NAdam:
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, base_optimizer="NAdam", method="adaptive")
 ```
 
 ### 2. Switch Method
@@ -1028,12 +972,44 @@ base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
 
 | Domain | Common Issue | Fix |
 |--------|--------------|-----|
-| **LoRA** | SGD + high LR diverges | Use `Momentum` + LR=0.02 |
-| **Drug Discovery** | BCE loss unstable | Use `AMSGrad` + `standard` method |
-| **Crypto/RL** | High variance | Use `Momentum` + `adaptive` method |
-| **QAOA** | Local minima | Use `NAdam` + `deep` method |
-| **Federated** | Non-IID variance | Use `Adam` + `standard` + LR=0.01 |
-| **Imbalanced** | Majority bias | Use `Adam` + `standard` + LR=0.01 |
+| **LoRA** | SGD + high LR diverges | Use `torch.optim.SGD(momentum=0.9)` + LR=0.02 |
+| **Drug Discovery** | BCE loss unstable | Use `torch.optim.Adam(amsgrad=True)` + `standard` |
+| **Crypto/RL** | High variance | Use `torch.optim.SGD(momentum=0.9)` + `adaptive` |
+| **QAOA** | Local minima | Use `torch.optim.NAdam` + `deep` method |
+| **Federated** | Non-IID variance | Use `torch.optim.Adam` + `standard` + LR=0.01 |
+| **Imbalanced** | Majority bias | Use `torch.optim.Adam` + `standard` + LR=0.01 |
+
+---
+
+### Custom / External Optimizers
+
+Mobiu-Q wraps **any** optimizer with a PyTorch-compatible interface:
+```python
+# Example: Muon optimizer (https://github.com/KellerJordan/Muon)
+from muon import Muon
+
+base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
+
+# Example: LAMB from apex
+from apex.optimizers import FusedLAMB
+
+base_opt = FusedLAMB(model.parameters(), lr=0.001)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="standard")
+
+# Example: Adafactor from transformers
+from transformers import Adafactor
+
+base_opt = Adafactor(model.parameters(), lr=1e-3, relative_step=False)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
+```
+
+**Requirements:** The optimizer must have:
+- `.step()` method
+- `.zero_grad()` method  
+- `.param_groups` attribute
+
+Most modern optimizers meet these requirements.
 
 ---
 

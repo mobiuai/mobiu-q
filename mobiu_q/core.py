@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.0.1 - Frustration Engine for Quantum
+Version: 4.1.0 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -68,8 +68,8 @@ API_ENDPOINT = os.environ.get(
 
 LICENSE_KEY_FILE = os.path.expanduser("~/.mobiu_q_license")
 
-# Available optimizers (must match server's AVAILABLE_OPTIMIZERS)
-AVAILABLE_OPTIMIZERS = ["Adam", "AdamW", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"]
+# Default optimizer for Quantum mode (PyTorch mode: user provides any optimizer)
+AVAILABLE_OPTIMIZERS = ["Adam"]
 DEFAULT_OPTIMIZER = "Adam"
 
 # Method name mapping (new names + legacy support)
@@ -824,7 +824,7 @@ class MobiuQCore:
             - "adaptive" (or legacy "rl"): For RL, LLM fine-tuning, high-variance
         mode: "simulation" (clean) or "hardware" (noisy quantum hardware)
         base_lr: Learning rate (default: computed from method+mode)
-        base_optimizer: Optimizer: "Adam" (default), "AdamW", "NAdam", "AMSGrad", "SGD", "Momentum", "LAMB"
+        base_optimizer: Optimizer: "Adam" (default)
         use_soft_algebra: Enable Soft Algebra enhancement (default: True)
         offline_fallback: If True, use local Adam when API unavailable
     
@@ -1480,7 +1480,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.0.1"
+__version__ = "4.1.0"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
