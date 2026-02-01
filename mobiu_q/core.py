@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.1.0 - Frustration Engine for Quantum
+Version: 4.2.0 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -300,11 +300,16 @@ class MobiuOptimizer:
         )
         
         if self._is_pytorch:
-            # Smart default for sync_interval
+            # Auto-detect: small models get full Soft Algebra via server
+            total_params = sum(
+                p.numel() for pg in optimizer_or_params.param_groups
+                for p in pg['params']
+            )
+            full_sync = total_params < 1000
+
             if sync_interval is None:
-                sync_interval = 50  # Default for Deep Learning
-    
-            # Hybrid mode: PyTorch optimizer + Cloud LR
+                sync_interval = 1 if full_sync else 50
+
             self._backend = _MobiuPyTorchBackend(
                 optimizer_or_params, 
                 self.license_key, 
@@ -313,7 +318,9 @@ class MobiuOptimizer:
                 use_soft_algebra=use_soft_algebra,
                 sync_interval=sync_interval,
                 maximize=maximize,
-                verbose=verbose
+                verbose=verbose,
+                full_sync=full_sync,
+                mode=mode or 'simulation'
             )
         else:
             # Quantum mode: Full cloud optimization
@@ -497,7 +504,8 @@ class _MobiuPyTorchBackend:
     def __init__(self, optimizer, license_key: str, method: str, 
                 base_lr: Optional[float] = None,
                 use_soft_algebra: bool = True, sync_interval: int = 50,
-                maximize: bool = False, verbose: bool = True):
+                maximize: bool = False, verbose: bool = True,
+                full_sync: bool = False, mode: str = 'simulation'):
         self.optimizer = optimizer
         self.license_key = license_key
         self.method = method
@@ -505,6 +513,8 @@ class _MobiuPyTorchBackend:
         self.verbose = verbose
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
+        self.full_sync = full_sync
+        self.mode = mode
         
         # Get LR: explicit base_lr > optimizer default logic
         if base_lr is not None:
@@ -517,9 +527,13 @@ class _MobiuPyTorchBackend:
             else:
                 self.base_lr = optimizer_lr
         
-        # Frustration Engine
+        # Frustration Engine (not needed in full_sync — server handles SA)
         self.maximize = maximize
-        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
+        self.frustration_engine = (
+            UniversalFrustrationEngine(base_lr=self.base_lr)
+            if use_soft_algebra and not full_sync
+            else None
+        )
         
         # Tracking
         self.energy_history = []
@@ -544,7 +558,7 @@ class _MobiuPyTorchBackend:
                 'action': 'start',
                 'license_key': self.license_key,
                 'method': self.method,
-                'mode': 'simulation',
+                'mode': self.mode,
                 'base_lr': self.base_lr,
                 'base_optimizer': 'Adam',
                 'use_soft_algebra': self.use_soft_algebra,
@@ -601,9 +615,76 @@ class _MobiuPyTorchBackend:
         # Use stored metric if none provided (for SB3 compatibility)
         if metric is None:
             metric = self._stored_metric
-    
+
         self._local_step_count += 1
-        
+
+        # ── FULL SYNC: small models → server computes SA, client runs optimizer ──
+        if self.full_sync:
+            import torch
+            energy = metric if metric is not None else 0.0
+            self.energy_history.append(energy)
+
+            # If no session or SA disabled, just run client optimizer as-is
+            if not self.session_id or not self.use_soft_algebra:
+                self.optimizer.step()
+                return
+
+            # Extract real params and gradients from PyTorch
+            all_params, all_grads = [], []
+            for pg in self.optimizer.param_groups:
+                for p in pg['params']:
+                    all_params.append(p.data.detach().cpu().flatten())
+                    all_grads.append(
+                        p.grad.detach().cpu().flatten() if p.grad is not None
+                        else torch.zeros(p.numel())
+                    )
+
+            params_np = torch.cat(all_params).numpy().tolist()
+            grads_np = torch.cat(all_grads).numpy().tolist()
+
+            try:
+                r = requests.post(self.api_endpoint, json={
+                    'action': 'step',
+                    'license_key': self.license_key,
+                    'session_id': self.session_id,
+                    'params': params_np,
+                    'gradient': grads_np,
+                    'energy': float(energy),
+                    'return_adjustments': True  # Don't run server optimizer
+                }, timeout=30)
+
+                data = r.json()
+                if data.get('success'):
+                    adaptive_lr = data.get('adaptive_lr', self.base_lr)
+                    warp = data.get('warp_factor', 1.0)
+
+                    # Warp gradients in-place
+                    if warp != 1.0:
+                        for pg in self.optimizer.param_groups:
+                            for p in pg['params']:
+                                if p.grad is not None:
+                                    p.grad.data.mul_(warp)
+
+                    # Set SA-adjusted learning rate
+                    for pg in self.optimizer.param_groups:
+                        pg['lr'] = adaptive_lr
+
+                    self.lr_history.append(adaptive_lr)
+                    self.warp_history.append(warp)
+
+                    # CLIENT'S OWN OPTIMIZER runs the actual update
+                    self.optimizer.step()
+                    return
+
+            except Exception:
+                pass
+
+            # Fallback: run client optimizer without SA
+            self.optimizer.step()
+            return
+
+        # ── HYBRID: periodic LR sync for large models ──
+
         # 1. FRUSTRATION ENGINE (Client-Side Logic)
         if self.frustration_engine and metric is not None:
             # Engine always wants "Higher is Better" for its internal logic
@@ -1480,7 +1561,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

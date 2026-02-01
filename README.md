@@ -1,4 +1,4 @@
-# Mobiu-Q v4.1.0
+# Mobiu-Q v4.2.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -847,19 +847,31 @@ See `examples/rl_trading_mobiu_benchmark.py` for full implementation.
 ## Base Optimizers
 
 ### PyTorch Mode
-Use **any** PyTorch optimizer - Mobiu-Q wraps it with Soft Algebra:
+Use **any** PyTorch optimizer — Mobiu-Q wraps it with Soft Algebra.
+Your optimizer always runs; Mobiu-Q enhances it via adaptive learning rate and gradient warping:
 
 ```python
-# Any of these work:
+# Any of these work — your optimizer actually runs:
 base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
 base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003)
 base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
+base_opt = torch.optim.NAdam(model.parameters(), lr=0.001)
+
+# Even custom/external optimizers:
+from muon import Muon
+base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
+
+# Wrap with Mobiu-Q — your optimizer runs, SA enhances it:
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
 ```
 
-**Quantum mode** - Uses Adam (server-side):
+### Quantum/NumPy Mode
+Server-side optimization with Adam + Soft Algebra.
+You provide params, gradient, and energy; Mobiu-Q returns optimized params:
 
 ```python
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
+opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="deep", mode="hardware")
+params = opt.step(params, grad, energy)
 ```
 ---
 
@@ -867,7 +879,10 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 
 If optimization is not improving or diverging, try these adjustments:
 
-### 1. Switch Base Optimizer
+### 1. Switch Base Optimizer (PyTorch mode)
+
+> **Note:** These recommendations apply to **PyTorch mode** where your optimizer runs directly.
+> In Quantum/NumPy mode, the server handles optimization internally.
 
 Different optimizers work better for different problems:
 

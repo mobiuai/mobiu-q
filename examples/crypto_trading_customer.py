@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q CRYPTO TRADING BENCHMARK
+🪙 CRYPTO TRADING - CUSTOMER VIEW TEST
 ================================================================================
-Simulates crypto trading with high volatility and regime switching.
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
-DETERMINISM:
-- Both optimizers start from IDENTICAL policy initialization (deep copy)
-- Both use the SAME torch/numpy seed for action sampling  
-- Both see the SAME market data per episode (via env.rng seed)
-- Only difference: how the optimizer updates the policy
+Crypto Trading Environment:
+- Simulated crypto market with regime switching
+- High volatility and transaction costs
+- Tests Mobiu-Q on non-stationary rewards
 ================================================================================
 """
 
@@ -20,20 +21,15 @@ import torch.optim as optim
 from torch.distributions import Categorical
 import copy
 from scipy.stats import wilcoxon
-import os
 
-try:
-    from mobiu_q import MobiuOptimizer
-    HAS_MOBIU = True
-except ImportError:
-    HAS_MOBIU = False
+from mobiu_q import MobiuOptimizer
 
-# ============================================================================
+# ============================================================
 # CONFIGURATION
-# ============================================================================
+# ============================================================
 
-LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "YOUR_KEY")
-METHOD = "adaptive"  
+LICENSE_KEY = "YOUR_KEY"
+METHOD = "adaptive"
 
 NUM_EPISODES = 500
 NUM_SEEDS = 10
@@ -43,15 +39,20 @@ EPISODE_LENGTH = 500
 TRANSACTION_FEE = 0.001
 
 print("=" * 70)
-print("🪙 MOBIU-Q CRYPTO TRADING BENCHMARK")
+print("🪙 CRYPTO TRADING - CUSTOMER VIEW TEST")
 print("=" * 70)
 print(f"Method: {METHOD}")
 print(f"Episodes: {NUM_EPISODES} | Seeds: {NUM_SEEDS}")
+print()
+print("This test shows what a CUSTOMER would experience:")
+print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+print("  • Test: Adam + Mobiu-Q enhancement")
 print("=" * 70)
 
-# ============================================================================
+
+# ============================================================
 # CRYPTO TRADING ENVIRONMENT
-# ============================================================================
+# ============================================================
 
 class CryptoTradingEnv:
     def __init__(self, window_size=20, episode_length=500, seed=None):
@@ -125,7 +126,7 @@ class CryptoTradingEnv:
         current_price = self.prices[self.current_step]
         reward = 0
         
-        if action == 1 and self.position != 1:
+        if action == 1 and self.position != 1:  # Buy/Long
             if self.position == -1:
                 pnl = (self.entry_price - current_price) / self.entry_price
                 reward += pnl - TRANSACTION_FEE
@@ -135,7 +136,7 @@ class CryptoTradingEnv:
             self.trade_count += 1
             reward -= TRANSACTION_FEE
             
-        elif action == 2 and self.position != -1:
+        elif action == 2 and self.position != -1:  # Sell/Short
             if self.position == 1:
                 pnl = (current_price - self.entry_price) / self.entry_price
                 reward += pnl - TRANSACTION_FEE
@@ -145,7 +146,7 @@ class CryptoTradingEnv:
             self.trade_count += 1
             reward -= TRANSACTION_FEE
             
-        elif action == 3 and self.position != 0:
+        elif action == 3 and self.position != 0:  # Close position
             if self.position == 1:
                 pnl = (current_price - self.entry_price) / self.entry_price
             else:
@@ -170,9 +171,9 @@ class CryptoTradingEnv:
         return self._get_state(), reward, done, False, {'total_profit': self.total_profit}
 
 
-# ============================================================================
+# ============================================================
 # POLICY NETWORK
-# ============================================================================
+# ============================================================
 
 class TradingPolicy(nn.Module):
     def __init__(self, state_dim, action_dim=4, hidden=64):
@@ -193,11 +194,14 @@ class TradingPolicy(nn.Module):
         return action.item(), dist.log_prob(action)
 
 
-# ============================================================================
-# TRAINING
-# ============================================================================
+# ============================================================
+# TRAINING - PURE ADAM (Baseline)
+# ============================================================
 
-def train_reinforce(policy, optimizer, env, num_episodes, use_mobiu=False):
+def train_pure_adam(policy, env, num_episodes):
+    """Train with Pure Adam - what customer has BEFORE adding Mobiu-Q"""
+    optimizer = optim.Adam(policy.parameters(), lr=BASE_LR)
+    
     episode_returns, episode_profits = [], []
     
     for ep in range(num_episodes):
@@ -229,11 +233,7 @@ def train_reinforce(policy, optimizer, env, num_episodes, use_mobiu=False):
         
         optimizer.zero_grad()
         loss.backward()
-        
-        if use_mobiu:
-            optimizer.step(sum(rewards))
-        else:
-            optimizer.step()
+        optimizer.step()
         
         episode_returns.append(sum(rewards))
         episode_profits.append(info['total_profit'])
@@ -241,15 +241,66 @@ def train_reinforce(policy, optimizer, env, num_episodes, use_mobiu=False):
     return episode_returns, episode_profits
 
 
-# ============================================================================
+# ============================================================
+# TRAINING - WITH MOBIU-Q
+# ============================================================
+
+def train_with_mobiu(policy, env, num_episodes):
+    """Train with Mobiu-Q - what customer has AFTER adding Mobiu-Q"""
+    base_opt = optim.Adam(policy.parameters(), lr=BASE_LR)
+    optimizer = MobiuOptimizer(
+        base_opt,
+        license_key=LICENSE_KEY,
+        method=METHOD,
+        maximize=True,
+        verbose=False
+    )
+    
+    episode_returns, episode_profits = [], []
+    
+    for ep in range(num_episodes):
+        state, _ = env.reset(seed=ep * 12345)
+        log_probs, rewards = [], []
+        
+        done = False
+        while not done:
+            action, log_prob = policy.get_action(state)
+            next_state, reward, done, _, info = env.step(action)
+            log_probs.append(log_prob)
+            rewards.append(reward)
+            state = next_state
+        
+        returns = []
+        G = 0
+        for r in reversed(rewards):
+            G = r + 0.99 * G
+            returns.insert(0, G)
+        
+        returns = torch.tensor(returns)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        
+        policy_loss = []
+        for log_prob, G in zip(log_probs, returns):
+            policy_loss.append(-log_prob * G)
+        
+        loss = torch.stack(policy_loss).sum()
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step(sum(rewards))  # Pass reward metric to Mobiu
+        
+        episode_returns.append(sum(rewards))
+        episode_profits.append(info['total_profit'])
+    
+    optimizer.end()
+    return episode_returns, episode_profits
+
+
+# ============================================================
 # MAIN
-# ============================================================================
+# ============================================================
 
 def main():
-    if not HAS_MOBIU:
-        print("❌ mobiu-q not installed!")
-        return
-    
     adam_results, adam_profits = [], []
     mobiu_results, mobiu_profits = [], []
     
@@ -264,29 +315,19 @@ def main():
         policy_adam = TradingPolicy(env.state_dim)
         policy_mobiu = copy.deepcopy(policy_adam)
         
-        opt_adam = optim.Adam(policy_adam.parameters(), lr=BASE_LR)
-        opt_mobiu = MobiuOptimizer(
-            optim.Adam(policy_mobiu.parameters(), lr=BASE_LR),
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            maximize=True,
-            use_soft_algebra=True,
-            verbose=False
-        )
-        
+        # Train with Pure Adam
         print("[Adam", end="", flush=True)
         torch.manual_seed(seed * 42)
         np.random.seed(seed * 42)
-        ret_adam, prof_adam = train_reinforce(policy_adam, opt_adam, env, NUM_EPISODES, use_mobiu=False)
+        ret_adam, prof_adam = train_pure_adam(policy_adam, env, NUM_EPISODES)
         print(".....] ", end="", flush=True)
         
+        # Train with Mobiu-Q
         print("[Mobiu", end="", flush=True)
         torch.manual_seed(seed * 42)
         np.random.seed(seed * 42)
-        ret_mobiu, prof_mobiu = train_reinforce(policy_mobiu, opt_mobiu, env, NUM_EPISODES, use_mobiu=True)
+        ret_mobiu, prof_mobiu = train_with_mobiu(policy_mobiu, env, NUM_EPISODES)
         print(".....] ", end="", flush=True)
-        
-        opt_mobiu.end()
         
         avg_adam = np.mean(prof_adam[-50:])
         avg_mobiu = np.mean(prof_mobiu[-50:])
@@ -296,7 +337,8 @@ def main():
         mobiu_results.append(np.mean(ret_mobiu[-50:]))
         mobiu_profits.append(avg_mobiu)
         
-        print(f"| Profit: {avg_adam*100:+.1f}% vs {avg_mobiu*100:+.1f}%")
+        winner = "✅" if avg_mobiu > avg_adam else "❌"
+        print(f"| Profit: {avg_adam*100:+.1f}% vs {avg_mobiu*100:+.1f}% {winner}")
     
     adam_prof_arr = np.array(adam_profits)
     mobiu_prof_arr = np.array(mobiu_profits)
@@ -305,11 +347,11 @@ def main():
     profit_wins = np.sum(mobiu_prof_arr > adam_prof_arr) / NUM_SEEDS * 100
     
     print("\n" + "=" * 70)
-    print("🪙 CRYPTO TRADING RESULTS")
+    print("📊 FINAL RESULTS")
     print("=" * 70)
     print(f"\n💰 Trading Profit:")
-    print(f"  Adam:       {adam_prof_arr.mean()*100:+.2f}% ± {adam_prof_arr.std()*100:.2f}%")
-    print(f"  Mobiu: {mobiu_prof_arr.mean()*100:+.2f}% ± {mobiu_prof_arr.std()*100:.2f}%")
+    print(f"  Pure Adam:     {adam_prof_arr.mean()*100:+.2f}% ± {adam_prof_arr.std()*100:.2f}%")
+    print(f"  Adam + Mobiu:  {mobiu_prof_arr.mean()*100:+.2f}% ± {mobiu_prof_arr.std()*100:.2f}%")
     print(f"  p-value: {p_profits:.6f}")
     print(f"  Win rate: {profit_wins:.1f}%")
     
@@ -320,6 +362,7 @@ def main():
         print("✅ Mobiu shows advantage")
     else:
         print("📊 Results inconclusive")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

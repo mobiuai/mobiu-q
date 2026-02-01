@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q MUJOCO TEST
+🤖 MUJOCO CONTINUOUS CONTROL - CUSTOMER VIEW TEST
 ================================================================================
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
-Fair A/B Test:
-- Baseline: use_soft_algebra=False
-- Mobiu: use_soft_algebra=True
+NOT using use_soft_algebra flag - testing real customer integration!
 
 Requirements:
     pip install mobiu-q gymnasium[mujoco] torch numpy scipy
-
-Usage:
-    python test_mujoco_maximize.py
 ================================================================================
 """
 
@@ -31,18 +29,14 @@ try:
 except ImportError:
     HAS_GYM = False
 
-try:
-    from mobiu_q import MobiuOptimizer
-    HAS_MOBIU = True
-except ImportError:
-    HAS_MOBIU = False
+from mobiu_q import MobiuOptimizer
 
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
 LICENSE_KEY = "YOUR_KEY"
-METHOD = "adaptive"  
+METHOD = "adaptive"
 
 ENVIRONMENTS = [
     "InvertedPendulum-v5",
@@ -87,10 +81,127 @@ class ActorCritic(nn.Module):
 
 
 # ============================================================
-# PPO TRAINING
+# PPO TRAINING - PURE ADAM (Baseline)
 # ============================================================
 
-def train_ppo(env_name, seed, use_mobiu=True):
+def train_ppo_pure_adam(env_name, seed):
+    """Train with Pure Adam - what customer has BEFORE adding Mobiu-Q"""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    
+    env = gym.make(env_name)
+    env.reset(seed=seed)
+    obs_dim = env.observation_space.shape[0]
+    act_dim = env.action_space.shape[0]
+    
+    model = ActorCritic(obs_dim, act_dim)
+    optimizer = torch.optim.Adam(model.parameters(), lr=BASE_LR, eps=1e-5)
+    
+    gamma, gae_lambda, clip_epsilon = 0.99, 0.95, 0.2
+    n_epochs, batch_size = 10, 64
+    
+    obs_buf, act_buf, logp_buf = [], [], []
+    rew_buf, done_buf, val_buf = [], [], []
+    
+    obs, _ = env.reset()
+    obs = torch.tensor(obs, dtype=torch.float32)
+    episode_rewards = []
+    current_reward = 0
+    
+    for step in range(TOTAL_TIMESTEPS):
+        with torch.no_grad():
+            action, log_prob, _, value = model.get_action_and_value(obs)
+        
+        action_np = action.numpy()
+        action_np = np.clip(action_np, env.action_space.low, env.action_space.high)
+        
+        next_obs, reward, terminated, truncated, _ = env.step(action_np)
+        done = terminated or truncated
+        current_reward += reward
+        
+        obs_buf.append(obs)
+        act_buf.append(action)
+        logp_buf.append(log_prob)
+        rew_buf.append(reward)
+        done_buf.append(done)
+        val_buf.append(value)
+        
+        obs = torch.tensor(next_obs, dtype=torch.float32)
+        
+        if done:
+            episode_rewards.append(current_reward)
+            current_reward = 0
+            obs, _ = env.reset()
+            obs = torch.tensor(obs, dtype=torch.float32)
+        
+        if len(obs_buf) >= STEPS_PER_UPDATE:
+            with torch.no_grad():
+                _, _, _, last_value = model.get_action_and_value(obs)
+            
+            advantages, returns = [], []
+            gae = 0
+            values = val_buf + [last_value]
+            
+            for t in reversed(range(len(rew_buf))):
+                if done_buf[t]:
+                    delta = rew_buf[t] - values[t]
+                    gae = delta
+                else:
+                    delta = rew_buf[t] + gamma * values[t + 1] - values[t]
+                    gae = delta + gamma * gae_lambda * gae
+                advantages.insert(0, gae)
+                returns.insert(0, gae + values[t])
+            
+            b_obs = torch.stack(obs_buf)
+            b_act = torch.stack(act_buf)
+            b_logp = torch.stack(logp_buf)
+            b_adv = torch.tensor(advantages, dtype=torch.float32)
+            b_ret = torch.tensor(returns, dtype=torch.float32)
+            b_adv = (b_adv - b_adv.mean()) / (b_adv.std() + 1e-8)
+            
+            indices = np.arange(len(obs_buf))
+            
+            for _ in range(n_epochs):
+                np.random.shuffle(indices)
+                for start in range(0, len(indices), batch_size):
+                    end = start + batch_size
+                    batch_idx = indices[start:end]
+                    
+                    _, new_logp, entropy, new_val = model.get_action_and_value(
+                        b_obs[batch_idx], b_act[batch_idx]
+                    )
+                    
+                    ratio = torch.exp(new_logp - b_logp[batch_idx])
+                    pg_loss1 = -b_adv[batch_idx] * ratio
+                    pg_loss2 = -b_adv[batch_idx] * torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon)
+                    pg_loss = torch.max(pg_loss1, pg_loss2).mean()
+                    
+                    v_loss = F.mse_loss(new_val, b_ret[batch_idx])
+                    ent_loss = -entropy.mean()
+                    loss = pg_loss + 0.5 * v_loss + 0.01 * ent_loss
+                    
+                    optimizer.zero_grad()
+                    loss.backward()
+                    nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+                    optimizer.step()
+            
+            obs_buf.clear()
+            act_buf.clear()
+            logp_buf.clear()
+            rew_buf.clear()
+            done_buf.clear()
+            val_buf.clear()
+    
+    env.close()
+    return np.mean(episode_rewards[-20:]) if len(episode_rewards) >= 20 else np.mean(episode_rewards) if episode_rewards else 0
+
+
+# ============================================================
+# PPO TRAINING - WITH MOBIU-Q
+# ============================================================
+
+def train_ppo_with_mobiu(env_name, seed):
+    """Train with Mobiu-Q - what customer has AFTER adding Mobiu-Q"""
     torch.manual_seed(seed)
     np.random.seed(seed)
     
@@ -102,26 +213,15 @@ def train_ppo(env_name, seed, use_mobiu=True):
     model = ActorCritic(obs_dim, act_dim)
     base_opt = torch.optim.Adam(model.parameters(), lr=BASE_LR, eps=1e-5)
     
-    if use_mobiu and HAS_MOBIU:
-        optimizer = MobiuOptimizer(
-            base_opt,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            use_soft_algebra=True, 
-            maximize=True,           
-            sync_interval=50,
-            verbose=False
-        )
-    else:
-        optimizer = MobiuOptimizer(
-            base_opt,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            use_soft_algebra=False,
-            maximize=True,
-            sync_interval=50,
-            verbose=False
-        ) if HAS_MOBIU else base_opt
+    # Customer adds Mobiu-Q like this:
+    optimizer = MobiuOptimizer(
+        base_opt,
+        license_key=LICENSE_KEY,
+        method=METHOD,
+        maximize=True,
+        sync_interval=50,
+        verbose=False
+    )
     
     gamma, gae_lambda, clip_epsilon = 0.99, 0.95, 0.2
     n_epochs, batch_size = 10, 64
@@ -210,11 +310,9 @@ def train_ppo(env_name, seed, use_mobiu=True):
                     loss.backward()
                     nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                     
-                    if HAS_MOBIU:
-                        metric = episode_rewards[-1] if episode_rewards else 0
-                        optimizer.step(metric)
-                    else:
-                        optimizer.step()
+                    # Mobiu-Q step with reward metric
+                    metric = episode_rewards[-1] if episode_rewards else 0
+                    optimizer.step(metric)
             
             obs_buf.clear()
             act_buf.clear()
@@ -224,9 +322,7 @@ def train_ppo(env_name, seed, use_mobiu=True):
             val_buf.clear()
     
     env.close()
-    if HAS_MOBIU:
-        optimizer.end()
-    
+    optimizer.end()
     return np.mean(episode_rewards[-20:]) if len(episode_rewards) >= 20 else np.mean(episode_rewards) if episode_rewards else 0
 
 
@@ -240,11 +336,15 @@ def main():
         return
     
     print("=" * 70)
-    print("🤖 MUJOCO CONTINUOUS CONTROL TEST")
+    print("🤖 MUJOCO CONTINUOUS CONTROL - CUSTOMER VIEW TEST")
     print("=" * 70)
     print(f"Method: {METHOD}")
     print(f"Environments: {ENVIRONMENTS}")
     print(f"Timesteps: {TOTAL_TIMESTEPS:,} | Seeds: {NUM_SEEDS}")
+    print()
+    print("This test shows what a CUSTOMER would experience:")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
     print("=" * 70)
     
     all_results = {}
@@ -259,19 +359,19 @@ def main():
         for seed in range(NUM_SEEDS):
             print(f"\n  Seed {seed + 1}/{NUM_SEEDS}")
             
-            print("    Training Baseline...", end=" ", flush=True)
-            baseline_score = train_ppo(env_name, seed, use_mobiu=False)
+            print("    Pure Adam...", end=" ", flush=True)
+            baseline_score = train_ppo_pure_adam(env_name, seed)
             print(f"Score: {baseline_score:.1f}")
             
-            print("    Training Mobiu...", end=" ", flush=True)
-            mobiu_score = train_ppo(env_name, seed, use_mobiu=True)
+            print("    Adam + Mobiu...", end=" ", flush=True)
+            mobiu_score = train_ppo_with_mobiu(env_name, seed)
             print(f"Score: {mobiu_score:.1f}")
             
             baseline_results.append(baseline_score)
             mobiu_results.append(mobiu_score)
             
             diff = mobiu_score - baseline_score
-            winner = "✅ Mobiu" if diff > 0 else "❌ Base"
+            winner = "✅ Mobiu" if diff > 0 else "❌ Adam"
             print(f"    Δ = {diff:+.1f} → {winner}")
         
         baseline_arr = np.array(baseline_results)
@@ -279,11 +379,10 @@ def main():
         
         win_rate = np.mean((mobiu_arr - baseline_arr) > 0)
         improvement = 100 * (mobiu_arr.mean() - baseline_arr.mean()) / (abs(baseline_arr.mean()) + 1e-9)
-        _, p_value = wilcoxon(baseline_arr, mobiu_arr, alternative='less') if len(baseline_results) >= 5 else (0, 1.0)
         
         print(f"\n  Results ({env_name}):")
-        print(f"    Baseline: {baseline_arr.mean():.1f} ± {baseline_arr.std():.1f}")
-        print(f"    Mobiu: {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
+        print(f"    Pure Adam:     {baseline_arr.mean():.1f} ± {baseline_arr.std():.1f}")
+        print(f"    Adam + Mobiu:  {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
         print(f"    Improvement: {improvement:+.1f}%")
         print(f"    Win rate: {win_rate*100:.1f}%")
         
@@ -299,9 +398,6 @@ def main():
     print("=" * 70)
     for env_name, results in all_results.items():
         print(f"{env_name}: {results['improvement']:+.1f}% improvement, {results['win_rate']*100:.0f}% wins")
-    
-    with open(f"mujoco_{datetime.now().strftime('%Y%m%d_%H%M')}.json", 'w') as f:
-        json.dump(all_results, f, indent=2)
 
 
 if __name__ == "__main__":

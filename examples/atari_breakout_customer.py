@@ -1,10 +1,26 @@
-# atari_breakout_lite.py
+#!/usr/bin/env python3
 """
-Atari Breakout - Lite Version
+================================================================================
+🎮 ATARI BREAKOUT - CUSTOMER VIEW TEST
+================================================================================
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
+
+NOT using use_soft_algebra flag - testing real customer integration!
+
+Requirements:
+    pip install mobiu-q ale-py gymnasium torch opencv-python
+================================================================================
 """
 
-# %% Cell 1: Imports
 import gc
+import numpy as np
+import random
+from datetime import datetime
+import warnings
+warnings.filterwarnings('ignore')
+
 import ale_py
 import gymnasium as gym
 gym.register_envs(ale_py)
@@ -13,27 +29,33 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import numpy as np
-from collections import deque
-import random
-from datetime import datetime
 import cv2
-import warnings
-warnings.filterwarnings('ignore')
+from collections import deque
 
 from mobiu_q import MobiuOptimizer
 
-print("🎮 Atari Breakout")
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+LICENSE_KEY = "YOUR_KEY"
+METHOD = "adaptive"
+
+NUM_EPISODES = 200
+NUM_SEEDS = 3
+
+print("🎮 Atari Breakout - Customer View Test")
 print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 print(f"🔧 PyTorch: {torch.__version__}")
 print(f"🖥️  GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-LICENSE_KEY = "YOUR_KEY"
-METHOD = "adaptive"  
 
-# %% Cell 2: CNN Architecture
+# ============================================================
+# CNN ARCHITECTURE
+# ============================================================
+
 class AtariDQN(nn.Module):
     def __init__(self, n_actions):
         super().__init__()
@@ -50,11 +72,16 @@ class AtariDQN(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
-# %% Cell 3: Frame Processing
+
+# ============================================================
+# FRAME PROCESSING
+# ============================================================
+
 def preprocess_frame(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
     resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     return resized
+
 
 class FrameStack:
     def __init__(self, k=4):
@@ -72,7 +99,11 @@ class FrameStack:
         self.frames.append(frame)
         return np.stack(self.frames, axis=0)
 
-# %% Cell 4: Replay Buffer
+
+# ============================================================
+# REPLAY BUFFER
+# ============================================================
+
 class ReplayBuffer:
     def __init__(self, capacity):
         self.capacity = capacity
@@ -105,10 +136,21 @@ class ReplayBuffer:
         self.buffer = []
         self.position = 0
 
-# %% Cell 5: Training Function
-def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
+
+# ============================================================
+# TRAINING FUNCTION
+# ============================================================
+
+def train_atari(use_mobiu=True, num_episodes=200, seed=42, verbose=True):
+    """
+    Train DQN on Atari Breakout.
+    
+    use_mobiu=False: Pure Adam (what customer has BEFORE Mobiu-Q)
+    use_mobiu=True:  Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
+    """
     gc.collect()
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     random.seed(seed)
     np.random.seed(seed)
@@ -124,15 +166,20 @@ def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
     target_net.eval()
     
     base_opt = optim.Adam(policy_net.parameters(), lr=1e-4)
-    optimizer = MobiuOptimizer(
-        base_opt,
-        license_key=LICENSE_KEY,
-        method=METHOD,
-        use_soft_algebra=use_soft_algebra,
-        maximize=True,
-        sync_interval=50,
-        verbose=False
-    )
+    
+    if use_mobiu:
+        # Customer adds Mobiu-Q like this:
+        optimizer = MobiuOptimizer(
+            base_opt,
+            license_key=LICENSE_KEY,
+            method=METHOD,
+            maximize=True,
+            sync_interval=50,
+            verbose=False
+        )
+    else:
+        # Baseline: Pure Adam (no Mobiu at all!)
+        optimizer = base_opt
     
     buffer = ReplayBuffer(30000)
     frame_stack = FrameStack(k=4)
@@ -149,7 +196,7 @@ def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
     total_steps = 0
     epsilon = epsilon_start
     
-    mode = "Mobiu-Q" if use_soft_algebra else "Adam"
+    mode = "Adam + Mobiu-Q" if use_mobiu else "Pure Adam"
     if verbose:
         print(f"\n🎮 Training {mode}")
     
@@ -198,7 +245,11 @@ def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
                 optimizer.zero_grad()
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(policy_net.parameters(), 10)
-                optimizer.step(episode_reward)
+                
+                if use_mobiu:
+                    optimizer.step(episode_reward)
+                else:
+                    optimizer.step()
             
             if total_steps % target_update == 0:
                 target_net.load_state_dict(policy_net.state_dict())
@@ -209,59 +260,71 @@ def train_atari(use_soft_algebra=True, num_episodes=200, seed=42, verbose=True):
             avg = np.mean(episode_rewards[-20:])
             print(f"   Ep {episode+1:3d} | Avg: {avg:6.1f} | ε: {epsilon:.2f}")
     
-    optimizer.end()
+    if use_mobiu:
+        optimizer.end()
     env.close()
     
     buffer.clear()
     del policy_net, target_net, buffer
     gc.collect()
-    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     return episode_rewards
 
-# %% Cell 6: Run Comparison
-def run_comparison(num_episodes=200, num_seeds=3):
-    print("=" * 60)
-    print("🎮 ATARI BREAKOUT - Mobiu-Q vs Adam")
-    print("=" * 60)
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+    print("=" * 70)
+    print("🎮 ATARI BREAKOUT - CUSTOMER VIEW TEST")
+    print("=" * 70)
+    print()
+    print("This test shows what a CUSTOMER would experience:")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
+    print("=" * 70)
     
     results = {'adam': [], 'mobiu': []}
     
-    for seed in range(num_seeds):
-        print(f"\n🌱 Seed {seed + 1}/{num_seeds}")
+    for seed in range(NUM_SEEDS):
+        print(f"\n🌱 Seed {seed + 1}/{NUM_SEEDS}")
         
-        print("   Adam...")
-        r_adam = train_atari(False, num_episodes, seed*100)
+        print("   Pure Adam...")
+        r_adam = train_atari(use_mobiu=False, num_episodes=NUM_EPISODES, seed=seed*100)
         avg_adam = np.mean(r_adam[-50:])
         results['adam'].append(avg_adam)
-        print(f"   Adam done: {avg_adam:.1f}")
+        print(f"   Pure Adam done: {avg_adam:.1f}")
         
-        print("   Mobiu-Q...")
-        r_mobiu = train_atari(True, num_episodes, seed*100)
+        print("   Adam + Mobiu-Q...")
+        r_mobiu = train_atari(use_mobiu=True, num_episodes=NUM_EPISODES, seed=seed*100)
         avg_mobiu = np.mean(r_mobiu[-50:])
         results['mobiu'].append(avg_mobiu)
-        print(f"   Mobiu done: {avg_mobiu:.1f}")
+        print(f"   Adam + Mobiu done: {avg_mobiu:.1f}")
     
     adam = np.array(results['adam'])
     mobiu = np.array(results['mobiu'])
     
-    print("\n" + "=" * 60)
-    print("📊 RESULTS")
-    print("=" * 60)
-    print(f"Adam:       {np.mean(adam):.1f} ± {np.std(adam):.1f}")
-    print(f"Mobiu: {np.mean(mobiu):.1f} ± {np.std(mobiu):.1f}")
+    print("\n" + "=" * 70)
+    print("📊 FINAL RESULTS")
+    print("=" * 70)
+    print(f"Pure Adam:      {np.mean(adam):.1f} ± {np.std(adam):.1f}")
+    print(f"Adam + Mobiu:   {np.mean(mobiu):.1f} ± {np.std(mobiu):.1f}")
     
     improvement = (np.mean(mobiu) - np.mean(adam)) / (abs(np.mean(adam)) + 1e-8) * 100
     wins = np.sum(mobiu > adam)
     
     print(f"\nImprovement: {improvement:+.1f}%")
-    print(f"Win rate: {wins}/{num_seeds}")
+    print(f"Win rate: {wins}/{NUM_SEEDS} ({100*wins/NUM_SEEDS:.0f}%)")
     
-    if improvement > 0 and wins > num_seeds/2:
+    if improvement > 0 and wins > NUM_SEEDS/2:
         print("\n🏆 Mobiu-Q wins!")
+    print("=" * 70)
     
     return results
 
-# %% Cell 7: Run
+
 if __name__ == "__main__":
-    results = run_comparison(num_episodes=200, num_seeds=3)
+    results = main()

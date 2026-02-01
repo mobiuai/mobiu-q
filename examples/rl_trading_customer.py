@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-RL TRADING BENCHMARK: Adam vs Mobiu-Q
+🚀 RL TRADING BENCHMARK - CUSTOMER VIEW TEST
 ================================================================================
-Tests MobiuOptimizer on trading using MobiuSignal features.
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
-Based on successful LunarLander methodology:
-- Fair A/B: Both use MobiuOptimizer, only use_soft_algebra differs
+Trading Environment with MobiuSignal features:
+- Regime switching (trending, mean-reverting, volatile)
+- Creates systematic bias that Mobiu-Q can exploit
 - 30 seeds for statistical significance
-- Wilcoxon signed-rank test
-
-Usage:
-    python rl_trading_benchmark.py
 ================================================================================
 """
 
@@ -23,29 +22,28 @@ from typing import Tuple, List, Optional
 from dataclasses import dataclass
 from scipy.stats import wilcoxon
 import copy
-import time
 import warnings
 
 warnings.filterwarnings('ignore')
 
 from mobiu_q import MobiuOptimizer
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 # CONFIGURATION
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 
-LICENSE_KEY = "YOUR_LICENSE_KEY"
+LICENSE_KEY = "YOUR_KEY"
 
-NUM_EPISODES = 500       # Episodes per training run
-NUM_SEEDS = 30           # Seeds for statistical significance
+NUM_EPISODES = 500
+NUM_SEEDS = 30
 BASE_LR = 0.0003
 METHOD = "adaptive"
 LOOKBACK = 20
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 # MOBIU SIGNAL (LOCAL)
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 
 @dataclass
 class SignalResult:
@@ -90,19 +88,12 @@ class MobiuSignal:
         self.price_history = []
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TRADING ENVIRONMENT WITH REGIME SWITCHING
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
+# TRADING ENVIRONMENT
+# ============================================================
 
 class TradingEnv:
-    """
-    Trading environment with regime switching (creates systematic bias).
-    
-    Regimes:
-    - Trending: drift + low vol
-    - Mean-reverting: no drift + high vol
-    - Volatile: high drift + high vol
-    """
+    """Trading environment with regime switching."""
     
     def __init__(self, n_steps: int = 500, regime_length: int = 100):
         self.n_steps = n_steps
@@ -117,7 +108,6 @@ class TradingEnv:
         self.pnl = 0.0
         self.prices = self._generate_prices()
         
-        # Warm up signal
         for i in range(LOOKBACK + 1):
             self.signal.update(self.prices[i])
             self.step_idx = i
@@ -125,7 +115,6 @@ class TradingEnv:
         return self._get_state()
     
     def _generate_prices(self) -> np.ndarray:
-        """Generate price series with regime switching."""
         prices = [100.0]
         
         for i in range(self.n_steps):
@@ -160,16 +149,14 @@ class TradingEnv:
         price_change = (next_price - current_price) / current_price
         old_position = self.position
         
-        # Execute action: 0=Hold, 1=Buy, 2=Sell
         if action == 1 and self.position <= 0:
             self.position = 1
         elif action == 2 and self.position >= 0:
             self.position = -1
         
-        # Reward
         reward = self.position * price_change * 100
         if old_position != self.position:
-            reward -= 0.1  # Transaction cost
+            reward -= 0.1
         
         self.pnl += reward
         done = self.step_idx >= len(self.prices) - 2
@@ -190,9 +177,9 @@ class TradingEnv:
         ], dtype=np.float32)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 # POLICY NETWORK
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 
 class PolicyNetwork(nn.Module):
     def __init__(self, state_dim: int = 5, hidden_dim: int = 64, action_dim: int = 3):
@@ -217,12 +204,13 @@ class PolicyNetwork(nn.Module):
         return F.log_softmax(logits, dim=-1)[0, action]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# TRAINING FUNCTION
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
+# TRAINING - PURE ADAM (Baseline)
+# ============================================================
 
-def train_policy(policy: PolicyNetwork, optimizer, num_episodes: int, seed: int, label: str = "") -> List[float]:
-    """Train policy using REINFORCE."""
+def train_pure_adam(policy: PolicyNetwork, num_episodes: int, seed: int, label: str = "") -> List[float]:
+    """Train with Pure Adam - what customer has BEFORE adding Mobiu-Q"""
+    optimizer = torch.optim.Adam(policy.parameters(), lr=BASE_LR)
     env = TradingEnv()
     returns = []
     
@@ -242,7 +230,65 @@ def train_policy(policy: PolicyNetwork, optimizer, num_episodes: int, seed: int,
         episode_return = info['pnl']
         returns.append(episode_return)
         
-        # REINFORCE update
+        G = 0
+        disc_returns = []
+        for r in reversed(rewards):
+            G = r + 0.99 * G
+            disc_returns.insert(0, G)
+        disc_returns = torch.tensor(disc_returns)
+        
+        if disc_returns.std() > 1e-6:
+            advantages = (disc_returns - disc_returns.mean()) / (disc_returns.std() + 1e-8)
+        else:
+            advantages = disc_returns - disc_returns.mean()
+        
+        loss = sum(-lp * adv for lp, adv in zip(log_probs, advantages))
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        if (ep + 1) % 100 == 0:
+            avg = np.mean(returns[-100:])
+            print(f"    {label} ep {ep+1}: avg100 = {avg:.1f}")
+    
+    return returns
+
+
+# ============================================================
+# TRAINING - WITH MOBIU-Q
+# ============================================================
+
+def train_with_mobiu(policy: PolicyNetwork, num_episodes: int, seed: int, label: str = "") -> List[float]:
+    """Train with Mobiu-Q - what customer has AFTER adding Mobiu-Q"""
+    base_opt = torch.optim.Adam(policy.parameters(), lr=BASE_LR)
+    optimizer = MobiuOptimizer(
+        base_opt,
+        license_key=LICENSE_KEY,
+        method=METHOD,
+        maximize=True,
+        verbose=False
+    )
+    
+    env = TradingEnv()
+    returns = []
+    
+    for ep in range(num_episodes):
+        np.random.seed(seed * 10000 + ep)
+        
+        state = env.reset()
+        log_probs, rewards = [], []
+        done = False
+        
+        while not done:
+            action = policy.get_action(state)
+            log_probs.append(policy.get_log_prob(state, action))
+            state, reward, done, info = env.step(action)
+            rewards.append(reward)
+        
+        episode_return = info['pnl']
+        returns.append(episode_return)
+        
         G = 0
         disc_returns = []
         for r in reversed(rewards):
@@ -265,23 +311,23 @@ def train_policy(policy: PolicyNetwork, optimizer, num_episodes: int, seed: int,
             avg = np.mean(returns[-100:])
             print(f"    {label} ep {ep+1}: avg100 = {avg:.1f}")
     
+    optimizer.end()
     return returns
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 # MAIN
-# ═══════════════════════════════════════════════════════════════════════════════
+# ============================================================
 
 def main():
     print("=" * 70)
-    print("🚀 RL TRADING BENCHMARK: Adam vs Mobiu-Q")
+    print("🚀 RL TRADING BENCHMARK - CUSTOMER VIEW TEST")
     print("=" * 70)
     print(f"Episodes: {NUM_EPISODES} | Seeds: {NUM_SEEDS} | LR: {BASE_LR}")
-    print(f"Method: {METHOD}")
     print()
-    print("Fair Test: Both use MobiuOptimizer")
-    print("  • Adam:  use_soft_algebra=False")
-    print("  • Mobiu: use_soft_algebra=True + maximize=True")
+    print("This test shows what a CUSTOMER would experience:")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
     print("=" * 70)
     
     adam_results = []
@@ -290,42 +336,18 @@ def main():
     for seed in range(NUM_SEEDS):
         print(f"\nSeed {seed + 1}/{NUM_SEEDS}")
         
-        # Create identical initial policies
         torch.manual_seed(seed)
         np.random.seed(seed)
         template = PolicyNetwork()
         adam_policy = copy.deepcopy(template)
         mobiu_policy = copy.deepcopy(template)
         
-        # Adam baseline (use_soft_algebra=False)
-        base_opt_adam = torch.optim.Adam(adam_policy.parameters(), lr=BASE_LR)
-        adam_opt = MobiuOptimizer(
-            base_opt_adam,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            use_soft_algebra=False,
-            maximize=True,
-            verbose=False
-        )
+        # Pure Adam
+        adam_returns = train_pure_adam(adam_policy, NUM_EPISODES, seed, "Adam ")
         
-        adam_returns = train_policy(adam_policy, adam_opt, NUM_EPISODES, seed, "Adam")
-        adam_opt.end()
+        # Adam + Mobiu
+        mobiu_returns = train_with_mobiu(mobiu_policy, NUM_EPISODES, seed, "Mobiu")
         
-        # Mobiu (use_soft_algebra=True)
-        base_opt_mobiu = torch.optim.Adam(mobiu_policy.parameters(), lr=BASE_LR)
-        mobiu_opt = MobiuOptimizer(
-            base_opt_mobiu,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            use_soft_algebra=True,
-            maximize=True,
-            verbose=False
-        )
-        
-        mobiu_returns = train_policy(mobiu_policy, mobiu_opt, NUM_EPISODES, seed, "Mobiu")
-        mobiu_opt.end()
-        
-        # Final scores (avg last 100 episodes)
         adam_final = np.mean(adam_returns[-100:])
         mobiu_final = np.mean(mobiu_returns[-100:])
         
@@ -334,7 +356,7 @@ def main():
         
         diff = mobiu_final - adam_final
         winner = "✅ Mobiu" if diff > 0 else "❌ Adam"
-        print(f"  Adam: {adam_final:.1f} | Mobiu: {mobiu_final:.1f} | Δ={diff:+.1f} → {winner}")
+        print(f"  Pure Adam: {adam_final:.1f} | Adam+Mobiu: {mobiu_final:.1f} | Δ={diff:+.1f} → {winner}")
     
     # Statistics
     adam_arr = np.array(adam_results)
@@ -347,10 +369,10 @@ def main():
     win_rate = sum(d > 0 for d in diff) / len(diff)
     
     print("\n" + "=" * 70)
-    print("📊 FINAL RESULTS - RL Trading")
+    print("📊 FINAL RESULTS")
     print("=" * 70)
-    print(f"Adam (SA=off):  {adam_arr.mean():.1f} ± {adam_arr.std():.1f}")
-    print(f"Mobiu (SA=on):  {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
+    print(f"Pure Adam:     {adam_arr.mean():.1f} ± {adam_arr.std():.1f}")
+    print(f"Adam + Mobiu:  {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
     print(f"\nImprovement: {improvement:+.1f}%")
     print(f"p-value: {p_value:.6f}")
     print(f"Cohen's d: {cohen_d:+.2f}")

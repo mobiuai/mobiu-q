@@ -1,21 +1,16 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q REAL TEST - LunarLander-v3
+🚀 LUNARLANDER - CUSTOMER VIEW TEST
 ================================================================================
-Tests Mobiu-Q on actual LunarLander-v3 using fair A/B comparison.
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
-Fair Test Methodology:
-- Both use MobiuOptimizer wrapping PyTorch Adam
-- Adam baseline: use_soft_algebra=False (constant LR)
-- Mobiu-Q: use_soft_algebra=True (adaptive LR from Soft Algebra)
-- Same seeds, same initial weights, same everything except Soft Algebra
-
-Requirements:
-    pip install mobiu-q gymnasium torch numpy scipy
-
-Usage:
-    python test_lunarlander_hybrid.py
+LunarLander-v3:
+- Classic RL benchmark
+- Discrete action space (4 actions)
+- Target: Land safely between flags
 ================================================================================
 """
 
@@ -40,7 +35,7 @@ LICENSE_KEY = "YOUR_KEY"
 NUM_EPISODES = 1000
 NUM_SEEDS = 30
 BASE_LR = 0.0003
-METHOD = "adaptive"  
+METHOD = "adaptive"
 ENV_NAME = "LunarLander-v3"
 
 
@@ -72,10 +67,13 @@ class PolicyNetwork(nn.Module):
 
 
 # ============================================================
-# TRAINING FUNCTION
+# TRAINING - PURE ADAM (Baseline)
 # ============================================================
 
-def train_policy(env_name, policy, optimizer, num_episodes, seed, label=""):
+def train_pure_adam(env_name, policy, num_episodes, seed, label=""):
+    """Train with Pure Adam - what customer has BEFORE adding Mobiu-Q"""
+    optimizer = torch.optim.Adam(policy.parameters(), lr=BASE_LR)
+    
     env = gym.make(env_name)
     env.reset(seed=seed)
     
@@ -107,7 +105,7 @@ def train_policy(env_name, policy, optimizer, num_episodes, seed, label=""):
         
         optimizer.zero_grad()
         loss.backward()
-        optimizer.step(sum(rewards))
+        optimizer.step()
         
         returns.append(sum(rewards))
         
@@ -119,21 +117,77 @@ def train_policy(env_name, policy, optimizer, num_episodes, seed, label=""):
 
 
 # ============================================================
-# MAIN TEST
+# TRAINING - WITH MOBIU-Q
+# ============================================================
+
+def train_with_mobiu(env_name, policy, num_episodes, seed, label=""):
+    """Train with Mobiu-Q - what customer has AFTER adding Mobiu-Q"""
+    base_opt = torch.optim.Adam(policy.parameters(), lr=BASE_LR)
+    optimizer = MobiuOptimizer(
+        base_opt,
+        license_key=LICENSE_KEY,
+        method=METHOD,
+        maximize=True,
+        verbose=False
+    )
+    
+    env = gym.make(env_name)
+    env.reset(seed=seed)
+    
+    returns = []
+    
+    for ep in range(num_episodes):
+        state, _ = env.reset()
+        log_probs, rewards = [], []
+        done = False
+        
+        while not done:
+            action = policy.get_action(state)
+            log_probs.append(policy.get_log_prob(state, action))
+            state, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            rewards.append(reward)
+        
+        G = 0
+        disc_returns = []
+        for r in reversed(rewards):
+            G = r + 0.99 * G
+            disc_returns.insert(0, G)
+        disc_returns = torch.tensor(disc_returns)
+        
+        baseline = disc_returns.mean()
+        advantages = (disc_returns - baseline) / (disc_returns.std() + 1e-8)
+        
+        loss = sum(-lp * adv for lp, adv in zip(log_probs, advantages))
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step(sum(rewards))  # Pass reward metric to Mobiu
+        
+        returns.append(sum(rewards))
+        
+        if (ep + 1) % 200 == 0:
+            print(f"  {label} ep {ep+1}: avg last 100 = {np.mean(returns[-100:]):.1f}")
+    
+    optimizer.end()
+    env.close()
+    return returns
+
+
+# ============================================================
+# MAIN
 # ============================================================
 
 def main():
     print("=" * 70)
-    print("🚀 MOBIU-Q FAIR A/B TEST - LunarLander-v3")
+    print("🚀 LUNARLANDER - CUSTOMER VIEW TEST")
     print("=" * 70)
-    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Environment: {ENV_NAME}")
     print(f"Episodes: {NUM_EPISODES} | Seeds: {NUM_SEEDS} | LR: {BASE_LR}")
-    print(f"Method: {METHOD}")
     print()
-    print("Fair Test: Both use MobiuOptimizer")
-    print("  • Adam:  use_soft_algebra=False (constant LR)")
-    print("  • Mobiu: use_soft_algebra=True  (AUTO adaptive LR)")
+    print("This test shows what a CUSTOMER would experience:")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
     print("=" * 70)
     
     env = gym.make(ENV_NAME)
@@ -153,32 +207,11 @@ def main():
         adam_policy = copy.deepcopy(template)
         mobiu_policy = copy.deepcopy(template)
         
-        # Train with Adam (use_soft_algebra=False)
-        base_opt_adam = torch.optim.Adam(adam_policy.parameters(), lr=BASE_LR)
-        adam_opt = MobiuOptimizer(
-            base_opt_adam,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            use_soft_algebra=False,
-            verbose=False
-        )
+        # Train with Pure Adam
+        adam_returns = train_pure_adam(ENV_NAME, adam_policy, NUM_EPISODES, seed, "Adam ")
         
-        adam_returns = train_policy(ENV_NAME, adam_policy, adam_opt, NUM_EPISODES, seed, "Adam")
-        adam_opt.end()
-        
-        # Train with Mobiu-Q (use_soft_algebra=True)
-        base_opt_mobiu = torch.optim.Adam(mobiu_policy.parameters(), lr=BASE_LR)
-        mobiu_opt = MobiuOptimizer(
-            base_opt_mobiu,
-            license_key=LICENSE_KEY,
-            method=METHOD,
-            maximize=True,
-            use_soft_algebra=True,
-            verbose=False
-        )
-        
-        mobiu_returns = train_policy(ENV_NAME, mobiu_policy, mobiu_opt, NUM_EPISODES, seed, "Mobiu")
-        mobiu_opt.end()
+        # Train with Mobiu-Q
+        mobiu_returns = train_with_mobiu(ENV_NAME, mobiu_policy, NUM_EPISODES, seed, "Mobiu")
         
         adam_final = np.mean(adam_returns[-100:])
         mobiu_final = np.mean(mobiu_returns[-100:])
@@ -188,7 +221,7 @@ def main():
         
         winner = "✅ Mobiu" if mobiu_final > adam_final else "❌ Adam"
         diff = mobiu_final - adam_final
-        print(f"  Adam: {adam_final:.1f} | Mobiu: {mobiu_final:.1f} | Δ={diff:+.1f} → {winner}")
+        print(f"  Pure Adam: {adam_final:.1f} | Adam+Mobiu: {mobiu_final:.1f} | Δ={diff:+.1f} → {winner}")
     
     # Statistics
     adam_arr = np.array(adam_results)
@@ -201,10 +234,10 @@ def main():
     win_rate = sum(d > 0 for d in diff) / len(diff)
     
     print("\n" + "=" * 70)
-    print("📊 FINAL RESULTS - LunarLander-v3")
+    print("📊 FINAL RESULTS")
     print("=" * 70)
-    print(f"Adam (SA=off):     {adam_arr.mean():.1f} ± {adam_arr.std():.1f}")
-    print(f"Mobiu (SA=on): {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
+    print(f"Pure Adam:      {adam_arr.mean():.1f} ± {adam_arr.std():.1f}")
+    print(f"Adam + Mobiu:   {mobiu_arr.mean():.1f} ± {mobiu_arr.std():.1f}")
     print(f"\nImprovement: {pct_improvement:+.1f}%")
     print(f"p-value: {p_value:.6f}")
     print(f"Cohen's d: {cohen_d:+.2f}")
@@ -212,24 +245,16 @@ def main():
     
     if pct_improvement > 5 and p_value < 0.05:
         print("\n🏆 SIGNIFICANT IMPROVEMENT!")
-    elif p_value < 0.05:
-        print("\n✅ Statistically significant (p < 0.05)")
-    else:
-        print("\n🔶 Not statistically significant")
-    
     print("=" * 70)
     
-    results = {
-        'method': METHOD,
-        'adam_mean': float(adam_arr.mean()),
-        'mobiu_mean': float(mobiu_arr.mean()),
-        'improvement_pct': float(pct_improvement),
-        'p_value': float(p_value),
-        'win_rate': float(win_rate)
-    }
-    
-    with open('lunarlander_results.json', 'w') as f:
-        json.dump(results, f, indent=2)
+    with open('lunarlander_customer_results.json', 'w') as f:
+        json.dump({
+            'adam_mean': float(adam_arr.mean()),
+            'mobiu_mean': float(mobiu_arr.mean()),
+            'improvement_pct': float(pct_improvement),
+            'p_value': float(p_value),
+            'win_rate': float(win_rate)
+        }, f, indent=2)
 
 
 if __name__ == "__main__":

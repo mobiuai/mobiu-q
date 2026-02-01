@@ -1,49 +1,40 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-MOBIU-Q REAL TEST - FakeFez VQE for H₂
+🧬 VQE HeH⁺ - CUSTOMER VIEW TEST
 ================================================================================
-Tests Mobiu-Q on H2 molecule with IBM FakeFez noise model.
-Uses BackendEstimatorV2 with EXPLICIT BATCHING for maximum speed (3x faster).
+This test shows what a CUSTOMER would experience:
+- Baseline: Pure SPSA optimizer (what customer has BEFORE Mobiu-Q)
+- Test: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
-FAIR TEST: 
-- SPSA deltas generated locally and applied to both optimizers.
-- Batched execution: [params, params+delta, params-delta] run in parallel.
-
-Requirements:
-    pip install mobiu-q qiskit qiskit-aer qiskit-ibm-runtime
-
-Usage:
-    python test_fakefez_h2.py
+HeH⁺ (Helium hydride cation):
+- 2 qubits (simplest molecular ion)
+- First molecule formed in the universe
+- Eigenvalue verified: -4.2960 Ha
 ================================================================================
 """
 
 import numpy as np
 from scipy.stats import wilcoxon
-from datetime import datetime
 import json
 import warnings
 warnings.filterwarnings('ignore')
 
-# Qiskit imports
 from qiskit.circuit.library import EfficientSU2
 from qiskit.quantum_info import SparsePauliOp
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 from qiskit_aer import AerSimulator
 from qiskit.primitives import BackendEstimatorV2
 
-# Robust FakeFez Import
 try:
     from qiskit_ibm_runtime.fake_provider import FakeFezV2 as FakeBackend
 except ImportError:
     try:
         from qiskit_ibm_runtime.fake_provider import FakeFez as FakeBackend
     except ImportError:
-        print("⚠️ FakeFez not found, using GenericBackendV2")
         from qiskit.providers.fake_provider import GenericBackendV2
         FakeBackend = lambda: GenericBackendV2(num_qubits=127)
 
-# Mobiu-Q
 from mobiu_q import MobiuQCore
 
 # ============================================================
@@ -51,58 +42,46 @@ from mobiu_q import MobiuQCore
 # ============================================================
 
 LICENSE_KEY = "YOUR_KEY"
-
-NUM_STEPS = 60
+NUM_STEPS = 50
 NUM_SEEDS = 5
 NUM_SHOTS = 4096
-C_SHIFT = 0.1  # SPSA shift
-METHOD = "standard"  
+C_SHIFT = 0.1
+LR = 0.02
+METHOD = "standard"
 
 # ============================================================
-# SETUP BACKEND & ESTIMATOR
+# SETUP
 # ============================================================
 
-# Use FakeFez via Aer (Much faster than raw FakeBackend)
+print("Setting up FakeFez backend...")
 backend = AerSimulator.from_backend(FakeBackend())
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
 
-# Hamiltonian & Ansatz for H2
+# HeH+ Hamiltonian (2 qubits)
 hamiltonian = SparsePauliOp.from_list([
-    ("II", -0.4804), ("ZZ", 0.3435), ("ZI", -0.4347),
-    ("IZ", 0.5716), ("XX", 0.0910), ("YY", 0.0910)
+    ("II", -2.8433), ("IZ", 0.5449), ("ZI", -0.5449),
+    ("ZZ", 0.3474), ("XX", 0.0921), ("YY", 0.0921),
 ])
-exact_energy = -1.846
+EXACT_ENERGY = -4.2960
 
-ansatz = EfficientSU2(2, reps=4, entanglement="linear")
+ansatz = EfficientSU2(2, reps=3, entanglement="linear")
 pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
 isa_ansatz = pm.run(ansatz)
 isa_ops = hamiltonian.apply_layout(isa_ansatz.layout)
 num_params = ansatz.num_parameters
 
-# ============================================================
-# BATCHED SPSA FUNCTION (The Speed Secret)
-# ============================================================
 
 def get_batched_energy_and_gradient(params, delta):
-    """
-    Runs 3 circuits in ONE job for maximum throughput.
-    Returns: (current_energy, gradient_estimate)
-    """
-    pub_current = (isa_ansatz, isa_ops, params)
-    pub_plus = (isa_ansatz, isa_ops, params + C_SHIFT * delta)
-    pub_minus = (isa_ansatz, isa_ops, params - C_SHIFT * delta)
-    
-    job = estimator.run([pub_current, pub_plus, pub_minus])
+    job = estimator.run([
+        (isa_ansatz, isa_ops, params),
+        (isa_ansatz, isa_ops, params + C_SHIFT * delta),
+        (isa_ansatz, isa_ops, params - C_SHIFT * delta)
+    ])
     results = job.result()
-    
-    e_current = float(results[0].data.evs)
-    e_plus = float(results[1].data.evs)
-    e_minus = float(results[2].data.evs)
-    
-    grad = (e_plus - e_minus) / (2 * C_SHIFT) * delta
-    
-    return e_current, grad
+    grad = (float(results[1].data.evs) - float(results[2].data.evs)) / (2 * C_SHIFT) * delta
+    return float(results[0].data.evs), grad
+
 
 # ============================================================
 # MAIN
@@ -110,83 +89,81 @@ def get_batched_energy_and_gradient(params, delta):
 
 def main():
     print("=" * 70)
-    print("🧬 MOBIU-Q REAL TEST - FakeFez VQE H₂")
+    print("🧬 VQE HeH⁺ - CUSTOMER VIEW TEST")
     print("=" * 70)
+    print(f"Molecule: HeH⁺ (2 qubits) | Ground State: {EXACT_ENERGY} Ha")
     print(f"Steps: {NUM_STEPS} | Seeds: {NUM_SEEDS} | Shots: {NUM_SHOTS}")
-    print(f"Method: {METHOD}")
-    print("Technique: Explicit Job Batching (3 circuits per job)")
+    print()
+    print("This test shows what a CUSTOMER would experience:")
+    print("  • Baseline: Pure SPSA optimization (NO Mobiu)")
+    print("  • Test: SPSA + Mobiu-Q enhancement")
     print("=" * 70)
     
-    baseline_results = []
+    spsa_results = []
     mobiu_results = []
     
     for seed in range(NUM_SEEDS):
         print(f"\n  Seed {seed + 1}/{NUM_SEEDS}")
         
-        # Initialize
         np.random.seed(seed)
         init_params = np.random.uniform(-0.3, 0.3, num_params)
-        
-        # Pre-generate SPSA deltas for total fairness
         np.random.seed(seed * 1000)
         spsa_deltas = [np.random.choice([-1, 1], size=num_params) for _ in range(NUM_STEPS)]
         
         # ─────────────────────────────────────────────────────────────────
-        # Baseline (use_soft_algebra=False)
+        # BASELINE: Pure SPSA
         # ─────────────────────────────────────────────────────────────────
         params = init_params.copy()
-        baseline_opt = MobiuQCore(
-            license_key=LICENSE_KEY,
-            method=METHOD, mode='hardware', use_soft_algebra=False, verbose=False
-        )
-        
-        baseline_best = float('inf')
+        spsa_best = float('inf')
         for step in range(NUM_STEPS):
-            energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
-            params = baseline_opt.step(params, grad, energy)
-            baseline_best = min(baseline_best, energy)
-        
-        baseline_opt.end()
+            e, g = get_batched_energy_and_gradient(params, spsa_deltas[step])
+            spsa_best = min(spsa_best, e)
+            params = params - LR * g
         
         # ─────────────────────────────────────────────────────────────────
-        # Mobiu-Q (use_soft_algebra=True)
+        # MOBIU-Q: SPSA + Mobiu-Q
         # ─────────────────────────────────────────────────────────────────
         params = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,
-            method=METHOD, mode='hardware', use_soft_algebra=True, verbose=False
+            method=METHOD,
+            mode='hardware',
+            verbose=False
         )
-        
         mobiu_best = float('inf')
         for step in range(NUM_STEPS):
-            energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
-            params = mobiu_opt.step(params, grad, energy)
-            mobiu_best = min(mobiu_best, energy)
-        
+            e, g = get_batched_energy_and_gradient(params, spsa_deltas[step])
+            mobiu_best = min(mobiu_best, e)
+            params = mobiu_opt.step(params, g, e)
         mobiu_opt.end()
         
-        # Compare
-        baseline_gap = abs(baseline_best - exact_energy)
-        mobiu_gap = abs(mobiu_best - exact_energy)
-        winner = "✅ Mobiu" if mobiu_gap < baseline_gap else "❌ Baseline"
-        print(f"    Baseline: {baseline_best:.4f} (gap={baseline_gap:.4f}) | Mobiu: {mobiu_best:.4f} (gap={mobiu_gap:.4f}) → {winner}")
+        spsa_gap = abs(spsa_best - EXACT_ENERGY)
+        mobiu_gap = abs(mobiu_best - EXACT_ENERGY)
+        winner = "✅ Mobiu wins" if mobiu_gap < spsa_gap else "❌ SPSA wins"
         
-        baseline_results.append(baseline_best)
+        print(f"    Pure SPSA: {spsa_best:.4f} (gap={spsa_gap:.4f})")
+        print(f"    + Mobiu-Q: {mobiu_best:.4f} (gap={mobiu_gap:.4f}) → {winner}")
+        
+        spsa_results.append(spsa_best)
         mobiu_results.append(mobiu_best)
 
     # Summary
-    baseline_arr = np.array(baseline_results)
+    spsa_arr = np.array(spsa_results)
     mobiu_arr = np.array(mobiu_results)
-    baseline_mean = np.mean(np.abs(baseline_arr - exact_energy))
-    mobiu_mean = np.mean(np.abs(mobiu_arr - exact_energy))
-    imp = (baseline_mean - mobiu_mean) / baseline_mean * 100
+    
+    spsa_gaps = np.abs(spsa_arr - EXACT_ENERGY)
+    mobiu_gaps = np.abs(mobiu_arr - EXACT_ENERGY)
+    
+    improvement = (np.mean(spsa_gaps) - np.mean(mobiu_gaps)) / np.mean(spsa_gaps) * 100
+    wins = np.sum(mobiu_gaps < spsa_gaps)
     
     print("\n" + "=" * 70)
-    print(f"  Improvement: {imp:+.1f}%")
+    print(f"📊 Improvement: {improvement:+.1f}% | Win Rate: {wins}/{NUM_SEEDS}")
     print("=" * 70)
     
-    with open('fakefez_h2_results.json', 'w') as f:
-        json.dump({'molecule': 'H2', 'method': METHOD, 'improvement': imp, 'baseline': baseline_mean, 'mobiu': mobiu_mean}, f)
+    with open('heh_customer_results.json', 'w') as f:
+        json.dump({'molecule': 'HeH+', 'improvement': improvement, 'wins': int(wins)}, f)
+
 
 if __name__ == "__main__":
     main()

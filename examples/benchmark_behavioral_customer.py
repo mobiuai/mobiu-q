@@ -15,7 +15,7 @@ import time
 from typing import List, Tuple
 
 # Get license key from environment
-LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "")
+LICENSE_KEY = os.environ.get("MOBIU_LICENSE_KEY", "YOUR_KEY")
 if not LICENSE_KEY:
     print("⚠️  Set MOBIU_LICENSE_KEY environment variable")
     print("   export MOBIU_LICENSE_KEY='your-key-here'")
