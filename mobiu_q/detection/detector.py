@@ -20,7 +20,7 @@ Copyright (c) 2025 Ido Angel / Mobiu Technologies
 ================================================================================
 """
 
-__version__ = "4.2.1"
+__version__ = "4.3.0"
 __author__ = "Ido Angel"
 
 import requests
