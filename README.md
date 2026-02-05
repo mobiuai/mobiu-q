@@ -1,4 +1,4 @@
-# Mobiu-Q v4.3.0
+# Mobiu-Q v4.3.1
 
 **Soft Algebra for Optimization & Attention**
 
@@ -1256,28 +1256,83 @@ Soft Algebra detects when high potential meets significant realization.
 ---
 
 ## Full Examples
-
 For complete working examples with benchmarking, see the `examples/` folder:
 
-| File | Domain | Description |
-|------|--------|-------------|
-| `test_lunarlander_hybrid.py` | RL | LunarLander with REINFORCE |
-| `test_mujoco_maximize.py` | RL | MuJoCo continuous control |
-| `ppo_mobiu_test.py` | RL | PPO from scratch |
-| `crypto_trading_benchmark.py` | Trading | Crypto with regime switching |
-| `test_fakefez_h2.py` | VQE | H₂ molecule on FakeFez |
-| `test_fakefez_lih.py` | VQE | LiH molecule |
-| `test_fakefez_qaoa.py` | QAOA | MaxCut optimization |
-| `test_federated_fair.py` | FL | Federated learning benchmark |
-| `test_noisy_labels_fair.py` | Noisy | Noisy labels benchmark |
-| `test_sim_to_real_fair.py` | Robotics | Sim-to-real benchmark |
-| `test_imbalanced_fair.py` | Classification | Imbalanced data benchmark |
-| `test_mobiu_attention_real.py` | Attention | Shakespeare + Code + Scaling benchmarks |
-| `test_double_mobiu.py` | Fair A/B Test | Soft Algebra ON vs OFF comparison |
-| `test_trainguard.py` | Training | TrainGuard monitoring demo |
-| `benchmark_behavioral.py` | Detection | Behavioral anomaly benchmark |
-| `example_signal.py` | Trading | MobiuSignal demo |
-| `rl_trading_mobiu_benchmark.py` | Trading | RL Trading with MobiuSignal + regime switching |
+### Quantum Chemistry (VQE)
+| File | Description |
+|------|-------------|
+| `test_fakefez_h2_customer.py` | H₂ molecule on FakeFez |
+| `test_lih_customer.py` | LiH molecule |
+| `test_h2o_customer.py` | H₂O molecule |
+| `test_beh2_customer.py` | BeH₂ molecule |
+| `test_h4_customer.py` | H₄ chain |
+| `test_heh_customer.py` | HeH⁺ molecule |
+
+### Condensed Matter Physics
+| File | Description |
+|------|-------------|
+| `test_heisenberg_xxz.py` | Heisenberg XXZ model |
+| `test_transverse_ising.py` | Transverse field Ising model |
+| `test_xy_model.py` | XY model |
+| `test_ferro_ising.py` | Ferromagnetic Ising |
+| `test_antiferro_heisenberg.py` | Antiferromagnetic Heisenberg |
+
+### Advanced Quantum
+| File | Description |
+|------|-------------|
+| `test_hubbard_dimer.py` | Hubbard dimer |
+| `test_ssh_model.py` | SSH model (topological) |
+| `test_kitaev_chain.py` | Kitaev chain |
+
+### QAOA
+| File | Description |
+|------|-------------|
+| `test_fakefez_qaoa_new.py` | MaxCut on FakeFez |
+| `test_fakefez_qaoa_mis_new.py` | Max Independent Set on FakeFez |
+
+### Classical Optimization
+| File | Description |
+|------|-------------|
+| `test_sphere.py` | Sphere function |
+| `test_ackley.py` | Ackley function |
+| `test_beale.py` | Beale function |
+| `test_rosenbrok.py` | Rosenbrock function |
+
+### Finance
+| File | Description |
+|------|-------------|
+| `test_portfolio.py` | Portfolio optimization |
+| `test_credit_risk.py` | Credit risk assessment |
+| `test_option_pricing.py` | Option pricing |
+| `crypto_trading_customer.py` | Crypto trading with regime switching |
+
+### Reinforcement Learning
+| File | Description |
+|------|-------------|
+| `test_lunarlander_customer.py` | LunarLander with REINFORCE |
+| `test_mujoco_customer.py` | MuJoCo continuous control |
+| `ppo_mobiu_test_customer.py` | PPO from scratch |
+| `atari_breakout_customer.py` | Atari Breakout |
+| `rl_trading_customer.py` | RL Trading with MobiuSignal |
+
+### Machine Learning Benchmarks
+| File | Description |
+|------|-------------|
+| `test_federated_customer.py` | Federated learning |
+| `test_noisy_labels_customer.py` | Noisy labels |
+| `test_sim_to_real_customer.py` | Sim-to-real transfer |
+| `test_imbalanced_customer.py` | Imbalanced classification |
+
+### Utilities & Demos
+| File | Description |
+|------|-------------|
+| `double_mobiu_customer.py` | Fair A/B: Soft Algebra ON vs OFF |
+| `ad_test_trainguard.py` | TrainGuard monitoring demo |
+| `ad_poc_demo.py` | Anomaly detection POC |
+| `benchmark_behavioral_customer.py` | Behavioral anomaly detection |
+| `example_signal_customer.py` | MobiuSignal demo |
+| `blackbox_spsa_customer.py` | Blackbox SPSA optimization |
+| `antenna_customer.py` | Antenna design optimization |
 
 ---
 

@@ -15,12 +15,12 @@ Quick Start:
     ...     if result.is_anomaly:
     ...         print(f"Anomaly! Δ†={result.delta_dagger:.4f}")
 
-Version: 4.2.0
+Version: 4.3.1
 Copyright (c) 2025 Ido Angel / Mobiu Technologies
 ================================================================================
 """
 
-__version__ = "4.3.0"
+__version__ = "4.3.1"
 __author__ = "Ido Angel"
 
 import requests
