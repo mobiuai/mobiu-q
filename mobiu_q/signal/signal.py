@@ -14,7 +14,7 @@ Validated Results (3,080 days BTC/USDT):
 - Q4/Q1 ratio: 1.83x larger moves in top quartile
 - Precision lift: 1.18x vs random baseline
 
-Version: 4.3.1
+Version: 4.3.3
 """
 
 import numpy as np

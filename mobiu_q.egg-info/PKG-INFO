@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 4.3.2
+Version: 4.3.3
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v4.3.1
+# Mobiu-Q v4.3.3
 
 **Soft Algebra for Optimization & Attention**
 

@@ -1,4 +1,4 @@
-# Mobiu-Q v4.3.1
+# Mobiu-Q v4.3.3
 
 **Soft Algebra for Optimization & Attention**
 
