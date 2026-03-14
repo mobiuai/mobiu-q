@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.4 - Frustration Engine for Quantum
+Version: 4.4.1 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -146,13 +146,21 @@ class UniversalFrustrationEngine:
     Logic Injection Engine that detects stagnation and boosts Learning Rate.
     Works entirely client-side for zero latency.
     """
-    def __init__(self, base_lr: float, sensitivity: float = 0.05):
+    def __init__(self, base_lr: float, sensitivity: float = 0.05,
+                flip_on_fire: bool = False,
+                session_id: str = None,
+                license_key: str = None,
+                api_endpoint: str = None):
         self.base_lr = base_lr
         self.history = deque(maxlen=50)
         self.cooldown = 0
         self.best_metric = -float('inf')
         self.stagnation_counter = 0
-        self.sensitivity = sensitivity 
+        self.sensitivity = sensitivity
+        self.flip_on_fire = flip_on_fire
+        self.session_id   = session_id
+        self.license_key  = license_key
+        self.api_endpoint = api_endpoint
 
     def get_lr_factor(self, current_metric: float) -> float:
         """
@@ -180,6 +188,14 @@ class UniversalFrustrationEngine:
             if is_stuck and self.stagnation_counter > 20:
                 self.cooldown = 30
                 self.stagnation_counter = 0
+                if self.flip_on_fire and self.session_id:
+                    try:
+                        requests.post(self.api_endpoint, json={
+                            'action': 'flip',
+                            'license_key': self.license_key,
+                            'session_id': self.session_id
+                        }, timeout=1.0)
+                    except: pass
                 return 3.0
 
         return 1.0
@@ -568,6 +584,10 @@ class _MobiuPyTorchBackend:
             
             if data.get('success'):
                 self.session_id = data['session_id']
+                if self.frustration_engine:
+                    self.frustration_engine.session_id   = self.session_id
+                    self.frustration_engine.license_key  = self.license_key
+                    self.frustration_engine.api_endpoint = self.api_endpoint
                 self._usage_info = data.get('usage', {})
                 self._available_optimizers = data.get('available_optimizers', AVAILABLE_OPTIMIZERS)
                 
@@ -1075,6 +1095,10 @@ class MobiuQCore:
                 raise RuntimeError(f"Failed to start session: {error}")
             
             self.session_id = data["session_id"]
+            if self.frustration_engine:
+                self.frustration_engine.session_id   = self.session_id
+                self.frustration_engine.license_key  = self.license_key
+                self.frustration_engine.api_endpoint = self.api_endpoint
             self._usage_info = data.get("usage", {})
             
             # Server may return computed values
@@ -1560,7 +1584,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.4"
+__version__ = "4.4.1"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
