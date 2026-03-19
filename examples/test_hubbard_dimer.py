@@ -49,8 +49,8 @@ NUM_STEPS = 150
 NUM_SEEDS = 5
 NUM_SHOTS = 4096
 C_SHIFT = 0.1
-LR = 0.2  # Adjusted to default for hardware mode in 'deep' method
-METHOD = "deep"
+LR = 0.01   # standard + hardware default
+METHOD = "standard"
 N_QUBITS = 4  # For dimer: 2 sites × 2 spins
 T = 1.0  # Hopping parameter
 U = 4.0  # On-site interaction
@@ -63,6 +63,7 @@ print("Setting up FakeFez backend...")
 backend = AerSimulator.from_backend(FakeBackend())
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
+estimator.options.seed_simulator = 42
 
 # Hubbard Dimer Hamiltonian (4 qubits, Jordan-Wigner mapping)
 # Qubits: 0: site1 up, 1: site1 down, 2: site2 up, 3: site2 down
@@ -103,6 +104,22 @@ def get_batched_energy_and_gradient(params, delta):
     return e_current, grad
 
 
+
+class PureAdam:
+    """PyTorch Adam — same LR as Mobiu hardware default."""
+    def __init__(self, params_np, lr=0.1):
+        import torch as _torch
+        self._tensor = _torch.tensor(params_np, dtype=_torch.float64, requires_grad=True)
+        self._opt    = _torch.optim.Adam([self._tensor], lr=lr)
+
+    def step(self, params_np, grad_np):
+        import torch as _torch
+        self._opt.zero_grad()
+        self._tensor.grad = _torch.tensor(grad_np, dtype=_torch.float64)
+        self._opt.step()
+        return self._tensor.detach().numpy().copy()
+
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -115,8 +132,8 @@ def main():
     print(f"Steps: {NUM_STEPS} | Seeds: {NUM_SEEDS} | Shots: {NUM_SHOTS}")
     print()
     print("This test shows what a CUSTOMER would experience:")
-    print("  • Baseline: Pure SPSA optimization (NO Mobiu)")
-    print("  • Test: SPSA + Mobiu-Q enhancement")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
     print("=" * 70)
     
     spsa_results = []
@@ -136,15 +153,18 @@ def main():
         # ─────────────────────────────────────────────────────────────────
         # BASELINE: Pure SPSA (what customer has BEFORE adding Mobiu-Q)
         # ─────────────────────────────────────────────────────────────────
-        params = init_params.copy()
+        print("    Running Pure Adam...", end="", flush=True)
+        params    = init_params.copy()
+        opt       = PureAdam(params, lr=LR)
         spsa_best = float('inf')
-        
+
         for step in range(NUM_STEPS):
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
             spsa_best = min(spsa_best, energy)
-            
-            # Pure SPSA update
-            params = params - LR * grad
+            params = opt.step(params, grad)
+            if step % 50 == 0:
+                print(f"\r    Adam step {step:3d}/{NUM_STEPS} | Best: {spsa_best:.4f}", end="")
+        print()
         
         # ─────────────────────────────────────────────────────────────────
         # MOBIU-Q: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
@@ -163,15 +183,17 @@ def main():
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
             mobiu_best = min(mobiu_best, energy)
             params = mobiu_opt.step(params, grad, energy)
-        
+            if step % 50 == 0:
+                print(f"\r    Mobiu step {step:3d}/{NUM_STEPS} | Best: {mobiu_best:.4f}", end="")
+        print()
         mobiu_opt.end()
         
         # Compare
         spsa_gap = abs(spsa_best - EXACT_ENERGY)
         mobiu_gap = abs(mobiu_best - EXACT_ENERGY)
-        winner = "✅ Mobiu wins" if mobiu_gap < spsa_gap else "❌ SPSA wins"
+        winner = "✅ Mobiu" if mobiu_gap < spsa_gap else "❌ Adam"
         
-        print(f"    Pure SPSA: {spsa_best:.4f} (gap={spsa_gap:.4f})")
+        print(f"    Pure Adam: {spsa_best:.4f} (gap={spsa_gap:.4f})")
         print(f"    + Mobiu-Q: {mobiu_best:.4f} (gap={mobiu_gap:.4f}) → {winner}")
         
         spsa_results.append(spsa_best)
@@ -200,8 +222,8 @@ def main():
     print("\n" + "=" * 70)
     print("📊 FINAL RESULTS")
     print("=" * 70)
-    print(f"Pure SPSA mean gap:    {spsa_mean_gap:.4f}")
-    print(f"SPSA + Mobiu-Q gap:    {mobiu_mean_gap:.4f}")
+    print(f"Pure Adam mean gap:    {spsa_mean_gap:.4f}")
+    print(f"Adam + Mobiu gap:    {mobiu_mean_gap:.4f}")
     print(f"\nImprovement: {improvement:+.1f}%")
     print(f"Win rate: {wins}/{NUM_SEEDS} ({100*wins/NUM_SEEDS:.0f}%)")
     print(f"p-value: {p_value:.6f}")

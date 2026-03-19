@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
 ================================================================================
-PPO: Adam vs Adam+Mobiu-Q
+🚀 PPO: Pure Adam vs Adam + Mobiu-Q (THE ULTIMATE FAIR TEST)
 ================================================================================
-Fair comparison: Same Adam optimizer, with and without Mobiu-Q wrapper.
+Fair comparison: Exactly the same PPO algorithm, same LR, same seeds.
+The ONLY difference is wrapping Adam with MobiuOptimizer.
 
-This demonstrates that Mobiu-Q WRAPS your optimizer - it doesn't replace it.
+This demonstrates how Mobiu-Q acts as a "Drop-in Replacement" that structurally 
+filters noise out of the PPO surrogate loss landscape.
 ================================================================================
 """
 
@@ -17,6 +19,8 @@ import gymnasium as gym
 from torch.distributions import Categorical
 from scipy.stats import wilcoxon
 import os
+import json
+from datetime import datetime
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 torch.use_deterministic_algorithms(True)
@@ -38,11 +42,11 @@ N_EPOCHS = 10
 GAMMA = 0.99
 GAE_LAMBDA = 0.95
 CLIP_EPSILON = 0.2
-LR = 3e-4
+LR = 3e-4  # Industry standard for PPO
 ENT_COEF = 0.01
 VF_COEF = 0.5
 MAX_GRAD_NORM = 0.5
-NUM_SEEDS = 10  # Reduced for faster testing
+NUM_SEEDS = 30 
 
 
 # ============================================================
@@ -123,13 +127,6 @@ class RolloutBuffer:
 # ============================================================
 
 def train_ppo(seed, optimizer_name="adam"):
-    """
-    Train PPO with specified optimizer.
-    
-    Args:
-        seed: Random seed
-        optimizer_name: "adam" or "adam+mobiu"
-    """
     torch.manual_seed(seed)
     np.random.seed(seed)
     
@@ -141,32 +138,28 @@ def train_ppo(seed, optimizer_name="adam"):
     model = ActorCritic(obs_dim, act_dim)
     
     # ========================================
-    # OPTIMIZER SETUP - THE KEY DIFFERENCE
+    # OPTIMIZER SETUP - THE ONLY DIFFERENCE
     # ========================================
     
     if optimizer_name == "adam":
-        # Plain Adam - no Mobiu-Q
         optimizer = torch.optim.Adam(model.parameters(), lr=LR, eps=1e-5)
         use_mobiu = False
         
     elif optimizer_name == "adam+mobiu":
-        # Adam wrapped with Mobiu-Q
         base_adam = torch.optim.Adam(model.parameters(), lr=LR, eps=1e-5)
         optimizer = MobiuOptimizer(
-            base_adam,  # <-- Same Adam optimizer!
+            base_adam,
             license_key=LICENSE_KEY,
-            method="adaptive",
-            maximize=True,
-            sync_interval=50,
+            method="adaptive", # Best for RL variance
+            maximize=False,    # <--- CRITICAL FIX: We are minimizing the PPO surrogate Loss!
             verbose=False
         )
         use_mobiu = True
-    
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
     
     # ========================================
-    # TRAINING LOOP (identical for both)
+    # TRAINING LOOP
     # ========================================
     
     buffer = RolloutBuffer()
@@ -231,17 +224,17 @@ def train_ppo(seed, optimizer_name="adam"):
                     
                     v_loss = F.mse_loss(new_values, mb_returns)
                     entropy_loss = -entropy.mean()
+                    
+                    # The surrogate loss we want to minimize
                     loss = pg_loss + VF_COEF * v_loss + ENT_COEF * entropy_loss
                     
                     optimizer.zero_grad()
                     loss.backward()
                     nn.utils.clip_grad_norm_(model.parameters(), MAX_GRAD_NORM)
                     
-                    # THE ONLY DIFFERENCE IN THE LOOP:
+                    # THE ONLY DIFFERENCE IN THE PPO UPDATE LOOP:
                     if use_mobiu:
-                        # Pass episode return for Soft Algebra
-                        metric = episode_rewards[-1] if episode_rewards else 0
-                        optimizer.step(metric)
+                        optimizer.step(loss.item()) # <--- CRITICAL FIX: Passing dynamic loss!
                     else:
                         optimizer.step()
             
@@ -252,6 +245,7 @@ def train_ppo(seed, optimizer_name="adam"):
     if use_mobiu:
         optimizer.end()
     
+    # Return average of the last 20 episodes to gauge final stable performance
     return np.mean(episode_rewards[-20:]) if len(episode_rewards) >= 20 else np.mean(episode_rewards) if episode_rewards else -200
 
 
@@ -261,37 +255,47 @@ def train_ppo(seed, optimizer_name="adam"):
 
 def main():
     print("=" * 70)
-    print("🚀 PPO: Adam vs Adam+Mobiu-Q")
+    print("🚀 PPO: Pure Adam vs Adam + Mobiu-Q (FAIR BENCHMARK)")
     print("=" * 70)
     print(f"Environment: {ENV_NAME}")
-    print(f"Timesteps: {TOTAL_TIMESTEPS:,}")
-    print(f"Seeds: {NUM_SEEDS}")
+    print(f"Timesteps:   {TOTAL_TIMESTEPS:,}")
+    print(f"Learning R:  {LR} (Industry Standard)")
+    print(f"Seeds:       {NUM_SEEDS}")
     print()
-    print("This test shows Mobiu-Q WRAPPING Adam - not replacing it!")
+    print("Testing the exact same PPO implementation. The only difference")
+    print("is passing the surrogate loss to MobiuOptimizer.step(loss.item())")
     print("=" * 70)
     
     adam_results = []
     mobiu_results = []
     
     for seed in range(NUM_SEEDS):
-        print(f"\nSeed {seed + 1}/{NUM_SEEDS}")
+        print(f"\n[Seed {seed + 1}/{NUM_SEEDS}]")
         
+        # Save RNG state — both runs see identical environments
+        torch_state = torch.get_rng_state()
+        np_state    = np.random.get_state()
+
         # Test 1: Plain Adam
-        print("  Adam only...", end=" ", flush=True)
+        print("  Running Pure Adam...    ", end="", flush=True)
         adam_score = train_ppo(seed, optimizer_name="adam")
-        print(f"Score: {adam_score:.1f}")
-        
+        print(f"Final Score: {adam_score:6.1f}")
+
+        # Restore RNG state — Mobiu starts from exactly the same point
+        torch.set_rng_state(torch_state)
+        np.random.set_state(np_state)
+
         # Test 2: Adam + Mobiu-Q wrapper
-        print("  Adam + Mobiu-Q...", end=" ", flush=True)
+        print("  Running Adam+Mobiu-Q... ", end="", flush=True)
         mobiu_score = train_ppo(seed, optimizer_name="adam+mobiu")
-        print(f"Score: {mobiu_score:.1f}")
+        print(f"Final Score: {mobiu_score:6.1f}")
         
         adam_results.append(adam_score)
         mobiu_results.append(mobiu_score)
         
         diff = mobiu_score - adam_score
         winner = "✅ Mobiu wins" if diff > 0 else "❌ Adam wins"
-        print(f"  Δ = {diff:+.1f} → {winner}")
+        print(f"  -> Δ = {diff:+.1f} ({winner})")
     
     # Statistics
     adam_arr = np.array(adam_results)
@@ -300,9 +304,9 @@ def main():
     
     win_rate = np.mean(diff > 0)
     
-    if len(adam_results) >= 5:
+    try:
         _, p_value = wilcoxon(adam_arr, mobiu_arr, alternative='less')
-    else:
+    except:
         p_value = 1.0
     
     improvement = 100 * (mobiu_arr.mean() - adam_arr.mean()) / (abs(adam_arr.mean()) + 1e-9)
@@ -311,22 +315,29 @@ def main():
     print("\n" + "=" * 70)
     print("📊 FINAL RESULTS")
     print("=" * 70)
-    print(f"Adam alone:      {adam_arr.mean():>8.1f} ± {adam_arr.std():.1f}")
+    print(f"Pure Adam:       {adam_arr.mean():>8.1f} ± {adam_arr.std():.1f}")
     print(f"Adam + Mobiu-Q:  {mobiu_arr.mean():>8.1f} ± {mobiu_arr.std():.1f}")
-    print()
-    print(f"Improvement: {improvement:+.1f}%")
-    print(f"Win rate: {win_rate*100:.1f}% ({int(win_rate*NUM_SEEDS)}/{NUM_SEEDS})")
-    print(f"p-value: {p_value:.6f}")
-    print(f"Cohen's d: {cohen_d:+.2f}")
+    print("-" * 70)
+    print(f"📈 Improvement:  {improvement:+.1f}%")
+    print(f"🏆 Win rate:     {win_rate*100:.1f}% ({int(win_rate*NUM_SEEDS)}/{NUM_SEEDS})")
+    print(f"⚖️ p-value:      {p_value:.6f}")
+    print(f"📏 Cohen's d:    {cohen_d:+.2f}")
     print("=" * 70)
     
-    if improvement > 5 and p_value < 0.05:
-        print("🏆 SIGNIFICANT IMPROVEMENT - Mobiu-Q wrapping Adam beats plain Adam!")
-    elif p_value < 0.05:
-        print("✅ Statistically significant")
-    else:
-        print("🔶 Not statistically significant (need more seeds?)")
-
+    # Save Results
+    filename = f'ppo_lunarlander_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+    with open(filename, 'w') as f:
+        json.dump({
+            'environment': ENV_NAME,
+            'timesteps': TOTAL_TIMESTEPS,
+            'adam_mean': float(adam_arr.mean()),
+            'mobiu_mean': float(mobiu_arr.mean()),
+            'improvement_pct': float(improvement),
+            'win_rate': float(win_rate),
+            'p_value': float(p_value),
+            'adam_scores': [float(x) for x in adam_arr],
+            'mobiu_scores': [float(x) for x in mobiu_arr],
+        }, f, indent=2)
 
 if __name__ == "__main__":
     main()

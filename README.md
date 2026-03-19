@@ -1,4 +1,4 @@
-# Mobiu-Q v4.4.2
+# Mobiu-Q v4.4.3
 
 **Soft Algebra for Optimization & Attention**
 
@@ -29,49 +29,61 @@ pip install mobiu-q
 
 ## Quick Start
 
-### MobiuOptimizer (Stable API)
+### MobiuOptimizer — PyTorch (wrap your optimizer)
 
 ```python
-from mobiu_q import MobiuOptimizer, MobiuAD, TrainGuard
 import torch
+from mobiu_q import MobiuOptimizer
 
-# Your license key (get one at https://app.mobiu.ai)
 LICENSE_KEY = "your-license-key-here"
 
-# Wrap any PyTorch optimizer
 model = MyModel()
-base_opt = torch.optim.Adam(model.parameters())
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="adaptive",  # LR auto-set to 0.0003
-    use_soft_algebra=True
-)
 
-# Or with explicit LR:
+# Step 1: define your base optimizer exactly as you normally would
+base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+
+# Step 2: wrap it — your optimizer still runs, Mobiu-Q enhances via SA
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
-    method="standard",
-    base_lr=0.001  # Override default LR
+    method="adaptive",   # standard | deep | adaptive
+    base_lr=3e-4,        # always pass base_lr to match your optimizer's LR
+    verbose=False
 )
 
 for batch in dataloader:
     loss = criterion(model(batch))
+    opt.zero_grad()
     loss.backward()
-    opt.step(loss.item())  # Pass loss for Soft Algebra
+    opt.step(loss.item())   # pass dynamic loss — not a static scalar
 
-opt.end()  # Important: release resources
+opt.end()   # important: release session
 ```
 
-### Monitoring Training
-```python
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-# ... training ...
+### MobiuOptimizer — Quantum/NumPy (MobiuQCore)
 
-# Track metrics
-print(opt.lr_history)    # Learning rates over time
-print(opt.warp_history)  # Gradient warp factors (new in v3.1.3)
+For VQE, QAOA, and black-box optimization with SPSA:
+
+```python
+import numpy as np
+from mobiu_q import MobiuQCore
+
+LICENSE_KEY = "your-license-key-here"
+
+params = np.random.uniform(-np.pi, np.pi, num_params)
+opt = MobiuQCore(
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="hardware",    # simulation | hardware
+    base_lr=0.02,       # standard+hardware default
+    verbose=False
+)
+
+for step in range(150):
+    energy, grad = get_batched_energy_and_gradient(params, spsa_delta)
+    params = opt.step(params, grad, energy)
+
+opt.end()
 ```
 
 ### MobiuAttention (🧪 Experimental)
@@ -79,44 +91,37 @@ print(opt.warp_history)  # Gradient warp factors (new in v3.1.3)
 ```python
 from mobiu_q.experimental import MobiuAttention, MobiuBlock
 
-# Drop-in replacement for nn.MultiheadAttention
-# Note: MobiuAttention runs locally, no license key needed!
+# Drop-in replacement for nn.MultiheadAttention — no license key needed
 attn = MobiuAttention(d_model=512, num_heads=8)
 out = attn(x)  # x: [batch, seq, dim]
 
-# Or use complete block
 block = MobiuBlock(d_model=512, num_heads=8)
 out = block(x)
 ```
 
-### MobiuAD (🆕 NEW in v3.9.0)
+### MobiuAD
+
 ```python
 from mobiu_q import MobiuAD, TrainGuard
 
-LICENSE_KEY = "your-license-key-here"
-
-# Streaming anomaly detection
 detector = MobiuAD(license_key=LICENSE_KEY)
 result = detector.detect(value)
 
-# Training monitor (Q + AD combined)
 guard = TrainGuard(license_key=LICENSE_KEY)
 result = guard.step(loss, gradient, val_loss)
 ```
 
-### MobiuSignal (🆕 NEW in v3.10.0)
+### MobiuSignal
+
 ```python
 from mobiu_q.signal import MobiuSignal
 
-# No license required - runs locally!
+# Runs locally — no license key needed
 signal = MobiuSignal(lookback=20)
-
-# Compute signal from prices
 result = signal.compute(prices)
 if result.is_strong:
     print(f"Strong {'📈' if result.is_bullish else '📉'} signal: {result.magnitude:.2f}")
 
-# Backtest on historical data
 backtest = signal.backtest(historical_prices, future_window=5)
 print(f"Correlation: {backtest.correlation:.3f}")
 print(f"Q4/Q1 Ratio: {backtest.q4_q1_ratio:.2f}x")
@@ -126,28 +131,16 @@ print(f"Q4/Q1 Ratio: {backtest.q4_q1_ratio:.2f}x")
 
 ## License Key
 
-MobiuOptimizer requires a license key to access the cloud API:
-
 ```python
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# PyTorch mode (pass optimizer)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-
-# Quantum/NumPy mode (pass params array)
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
+LICENSE_KEY = "your-license-key-here"  # https://app.mobiu.ai
 ```
-
-**Get your key:** https://app.mobiu.ai
 
 | Tier | API Calls | Price |
 |------|-----------|-------|
 | Free | 20/month | $0 |
 | Pro | Unlimited | $19/month |
 
-**Note:** MobiuAttention runs locally and does NOT require a license key.
+**Note:** MobiuAttention and MobiuSignal run locally — no license key required.
 
 ---
 
@@ -155,486 +148,224 @@ opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard")
 
 ### Methods
 
-| Method     | Use Case                                    | Default LR |
-|------------|---------------------------------------------|------------|
-| `standard` | Smooth landscapes, chemistry, physics       | 0.01       |
-| `deep`     | Deep circuits, noisy hardware, complex opt  | 0.1        |
-| `adaptive` | RL, LLM fine-tuning, high-variance problems | 0.0003     |
+| Method     | Use Case                                      | Default LR (simulation) | Default LR (hardware) |
+|------------|-----------------------------------------------|-------------------------|-----------------------|
+| `standard` | VQE, chemistry, smooth landscapes             | 0.01                    | 0.02                  |
+| `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
+| `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
 
-**Note:** Default LR is auto-applied in PyTorch mode. Override with `base_lr=...` if needed.
+**Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
+
+**Mode (`mode=`) is for quantum/NumPy only.** In PyTorch mode, the `mode` parameter has no effect — your optimizer always runs at the LR you set.
+
+### Supported Base Optimizers (PyTorch mode)
+
+Any PyTorch-compatible optimizer works. Common choices:
+
+```python
+# Supervised learning / VQE-classical
+base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+
+# RL / high-variance
+base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+
+# LLM fine-tuning (LoRA)
+base_opt = torch.optim.SGD(model.parameters(), lr=5e-3, momentum=0.9)
+
+# Custom / external
+from muon import Muon
+base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
+```
+
+Supported server-side (Quantum/NumPy mode): `Adam`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`.
+
+### minimize vs maximize
+
+```python
+# Loss minimization (default) — supervised learning, VQE
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive",
+                     base_lr=3e-4, maximize=False)
+opt.step(loss.item())
+
+# Reward maximization — RL with SB3 callback (set_metric provides reward signal)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive",
+                     base_lr=3e-4, maximize=True)
+# SB3: opt.set_metric(episode_reward)
+```
+
+| Use Case | maximize= | Pass to step() |
+|----------|-----------|----------------|
+| Supervised learning | `False` | `loss.item()` |
+| VQE / QAOA | `False` | `energy` |
+| PPO policy loss | `False` | `loss.item()` |
+| SB3 RL (via callback) | `True` | `set_metric(reward)` |
+
+### Fair Benchmarking
+
+The correct customer-view test compares **Pure Adam** (baseline) vs **Adam wrapped by MobiuOptimizer** (test). Both start from identical weights, same seed, same RNG state:
+
+```python
+import torch
+import numpy as np
+
+# --- Shared init ---
+torch.manual_seed(seed)
+model_template = MyModel()
+init_weights = {k: v.clone() for k, v in model_template.state_dict().items()}
+
+# Save RNG state so both runs see identical data/noise
+torch_state = torch.get_rng_state()
+np_state    = np.random.get_state()
+
+# --- Baseline: Pure Adam ---
+model_adam = MyModel()
+model_adam.load_state_dict(init_weights)
+optimizer_adam = torch.optim.Adam(model_adam.parameters(), lr=LR)
+
+for batch in dataloader:
+    loss = criterion(model_adam(batch))
+    optimizer_adam.zero_grad()
+    loss.backward()
+    optimizer_adam.step()
+
+# --- Restore RNG: Mobiu sees identical batches ---
+torch.set_rng_state(torch_state)
+np.random.set_state(np_state)
+
+# --- Test: Adam + Mobiu-Q ---
+model_mobiu = MyModel()
+model_mobiu.load_state_dict(init_weights)
+base_opt = torch.optim.Adam(model_mobiu.parameters(), lr=LR)
+optimizer_mobiu = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    base_lr=LR,       # prevent auto-replace
+    maximize=False,
+    verbose=False
+)
+
+for batch in dataloader:
+    loss = criterion(model_mobiu(batch))
+    optimizer_mobiu.zero_grad()
+    loss.backward()
+    optimizer_mobiu.step(loss.item())   # pass dynamic loss
+
+optimizer_mobiu.end()
+```
 
 ### Benchmarks
 
-#### Reinforcement Learning & Trading
+#### Reinforcement Learning
 
-| Domain                  | Improvement | Win Rate | p-value |
-|-------------------------|-------------|----------|---------|
-| Crypto Trading          | **+56%** profit | 100% | <0.001  |
-| LunarLander-v3          | +128%       | 97%      | <0.001  |
-| MuJoCo InvertedPendulum | +111%       | 100%     | <0.001  |
-| RL Trading (MobiuSignal) | **+168%** | 83% | <0.001 |
+| Domain | Improvement | Win Rate | Seeds | p-value |
+|--------|-------------|----------|-------|---------|
+| LunarLander-v3 (PPO) | **+98.8%** | 97% (29/30) | 30 | <0.000001 |
+| LunarLander-v3 (SB3 PPO) | **+197.4%** | 80% (24/30) | 30 | 0.000189 |
+| Portfolio Trading (PPO) | **+219.3%** | 100% | 10 | 0.000977 |
+| MuJoCo InvertedPendulum-v5 | **+330.2%** | 90% | 10 | — |
+| MuJoCo Hopper-v5 | **+29.9%** | 90% | 10 | — |
+| Atari Breakout | **+135.9%** | 100% | 3 | — |
 
-#### Quantum Computing
+#### Quantum Computing (VQE — IBM FakeFez)
 
-| Domain                  | Improvement | Win Rate | p-value |
-|-------------------------|-------------|----------|---------|
-| VQE H₂ (FakeFez)        | +52%        | 100%     | <0.001  |
-| QAOA MaxCut             | +45%        | 95%      | <0.001  |
+| Molecule / Model | Improvement | Win Rate | Seeds |
+|------------------|-------------|----------|-------|
+| BeH₂ | **+85.8%** | 100% | 5 |
+| HeH⁺ | **+78.8%** | 100% | 5 |
+| H₄ Chain | **+61.2%** | 100% | 5 |
+| H₂ | **+50.6%** | 100% | 5 |
+| H₂O | **+47.3%** | 100% | 5 |
+| LiH | **+40.8%** | 100% | 5 |
+| Ferro Ising (6 spins) | **+37.2%** | 100% | 5 |
+| Antiferro Heisenberg | **+30.0%** | 100% | 5 |
+| Transverse Ising | **+29.9%** | 100% | 5 |
+| Heisenberg XXZ (Δ=2.0) | **+26.0%** | 80% | 5 |
+| C₁₃Cl₂ Half-Möbius | **+20.5%** | 100% | 5 |
 
-#### Noisy & Distributed Learning 🆕
+#### QAOA (IBM FakeFez)
 
-These domains have **systematic gradient bias** - exactly where Soft Algebra excels:
+| Problem | Improvement | Win Rate | Seeds |
+|---------|-------------|----------|-------|
+| MaxCut | **+45.3%** | 90% | 10 |
+| Max Independent Set | **+28.9%** | 100% | 5 |
 
-| Domain              | Improvement | Win Rate | p-value | Bias Source |
-|---------------------|-------------|----------|---------|-------------|
-| Federated Learning  | **+67%**    | 100%     | <0.001  | Non-IID client data |
-| Imbalanced Data     | **+52%**    | 100%     | <0.001  | Majority class dominates |
-| Sim-to-Real         | **+47%**    | 100%     | <0.001  | Simulator ≠ reality |
-| Noisy Labels        | **+40%**    | 100%     | <0.001  | Systematic mislabeling |
+#### Machine Learning (Systematic Gradient Bias)
 
-*All tests: 10 seeds, same energy & gradient for both, only `use_soft_algebra` differs*
+| Domain | Bias Source | Improvement | Win Rate |
+|--------|-------------|-------------|----------|
+| Federated Learning | Non-IID client data | **+67.3%** | 100% |
+| Imbalanced Data | 90% majority class | **+52.5%** | 100% |
+| Sim-to-Real | Wrong simulator physics | **+47.0%** | 100% |
+| Noisy Labels | 30% systematic mislabeling | **+40.3%** | 100% |
+| LLM Full Fine-tuning | Momentum optimizer | **+43.5%** | 100% |
+| LLM LoRA Fine-tuning | Momentum optimizer | **+5.6%** | 100% |
 
-### Why Soft Algebra Works Here
+#### Signal Processing & Black-box Optimization
 
-In these domains, the **gradient is systematically biased**:
-- Federated: Each client sees different data distribution
-- Imbalanced: Gradient dominated by majority class
-- Sim-to-Real: Simulator has wrong physics parameters
-- Noisy Labels: Labels consistently confused (e.g., 3↔8)
-
-Soft Algebra detects the gap between gradient direction and actual loss improvement, then corrects for it.
-
-### Maximize vs Minimize
-
-By default, Mobiu-Q assumes you're **minimizing** (loss, energy). For RL/Trading where you **maximize** (reward, profit), set `maximize=True`:
-
-```python
-LICENSE_KEY = "your-license-key-here"
-
-# Loss minimization (default) - for supervised learning, VQE
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-opt.step(loss.item())
-
-# Reward maximization - for RL, trading
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", maximize=True)
-opt.step(episode_return)
-```
-
-| Use Case | maximize= | Example |
-|----------|-----------|---------|
-| Supervised Learning | `False` (default) | `opt.step(loss.item())` |
-| VQE / QAOA | `False` (default) | `opt.step(energy)` |
-| RL (policy gradient) | `True` | `opt.step(episode_return)` |
-| Trading | `True` | `opt.step(profit)` |
-
-**Why does this matter?** Soft Algebra tracks the "direction of improvement". Using the wrong setting confuses the optimizer.
-
-### A/B Testing
-
-```python
-LICENSE_KEY = "your-license-key-here"
-
-# Test with Soft Algebra
-opt_on = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, use_soft_algebra=True)
-
-# Test without (baseline)
-opt_off = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, use_soft_algebra=False)
-```
+| Domain | Improvement | Win Rate | Seeds |
+|--------|-------------|----------|-------|
+| 5G Antenna Beamforming (16 elements) | **+965.5%** | 100% | 10 |
+| Noisy Periodic (deep SA) | **+547.9%** | 90% | 10 |
+| Beale function (shot noise) | **+99.1%** | 100% | 10 |
+| Rosenbrock (shot noise) | **+90.2%** | 100% | 10 |
+| Sphere (shot noise) | **+81.1%** | 90% | 10 |
+| Rastrigin (shot noise) | **+29.9%** | 90% | 10 |
+| Ackley (shot noise) | **+27.7%** | 80% | 10 |
 
 ---
 
 ## Examples by Domain
 
-### Federated Learning 🆕
-
-```python
-import numpy as np
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Simulate federated aggregation with non-IID clients
-class FederatedTrainer:
-    def __init__(self, n_clients=10, non_iid_strength=0.5):
-        self.n_clients = n_clients
-        self.non_iid = non_iid_strength
-        # Each client has biased local data
-        self.client_biases = [np.random.randn(dim) * non_iid_strength 
-                             for _ in range(n_clients)]
-    
-    def aggregate_gradients(self, params, sampled_clients):
-        """Aggregate gradients from subset of clients (FedAvg style)"""
-        grads = []
-        for c in sampled_clients:
-            # Each client's gradient is biased by their local data
-            local_grad = compute_gradient(params) + self.client_biases[c]
-            grads.append(local_grad)
-        return np.mean(grads, axis=0)
-
-# Mobiu-Q handles the systematic bias from non-IID aggregation
-params = np.random.randn(100)
-opt = MobiuOptimizer(
-    params,
-    license_key=LICENSE_KEY,
-    method="standard",
-    base_lr=0.01
-)
-
-for round in range(100):
-    # Sample random clients (realistic FL scenario)
-    clients = np.random.choice(n_clients, size=5, replace=False)
-    gradient = trainer.aggregate_gradients(params, clients)
-    loss = compute_global_loss(params)
-    
-    params = opt.step(params, gradient, loss)
-
-opt.end()
-```
-
-### Imbalanced Data Classification 🆕
+### Reinforcement Learning — PPO
 
 ```python
 import torch
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Dataset with 90% class 0, 10% class 1 (fraud detection, medical diagnosis)
-train_loader = create_imbalanced_loader(imbalance_ratio=0.9)
-
-model = FraudDetector()
-base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="standard"
-)
-
-for batch in train_loader:
-    # Gradient dominated by majority class
-    loss = criterion(model(batch))
-    loss.backward()
-    
-    # Soft Algebra corrects for class imbalance bias
-    opt.step(loss.item())
-
-opt.end()
-```
-
-### Sim-to-Real Robotics 🆕
-
-```python
-import torch
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Policy trained in simulator, deployed in real world
-policy = RobotPolicy()
-base_opt = torch.optim.Adam(policy.parameters(), lr=0.0003)
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="adaptive",
-    maximize=True
-)
-
-for episode in range(1000):
-    # Gradient from SIMULATOR (biased - wrong friction, mass, etc.)
-    sim_loss = run_simulator_episode(policy)
-    sim_loss.backward()
-    
-    # Periodically evaluate in REAL environment
-    if episode % 10 == 0:
-        real_reward = run_real_episode(policy)
-    
-    # Soft Algebra uses real reward to correct simulator bias
-    opt.step(real_reward)
-
-opt.end()
-```
-
-### Noisy Labels 🆕
-
-```python
-import torch
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Dataset with systematic label noise (crowdsourced, OCR errors)
-# e.g., "3" often mislabeled as "8", "cat" confused with "dog"
-train_loader = create_noisy_label_loader(noise_rate=0.3)
-
-model = Classifier()
-base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="standard"
-)
-
-for batch_x, noisy_labels in train_loader:
-    # Gradient points toward WRONG targets due to label noise
-    loss = criterion(model(batch_x), noisy_labels)
-    loss.backward()
-    
-    # Validate on clean held-out set
-    clean_loss = evaluate_clean(model)
-    
-    # Soft Algebra detects mismatch and corrects
-    opt.step(clean_loss)
-
-opt.end()
-```
-
-### Reinforcement Learning (REINFORCE)
-
-```python
-import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import gymnasium as gym
 from mobiu_q import MobiuOptimizer
 
 LICENSE_KEY = "your-license-key-here"
+LR = 3e-4  # industry standard for PPO
 
-# Simple policy network
-policy = torch.nn.Sequential(
-    torch.nn.Linear(8, 64), torch.nn.Tanh(),
-    torch.nn.Linear(64, 64), torch.nn.Tanh(),
-    torch.nn.Linear(64, 4)
-)
+class ActorCritic(nn.Module):
+    def __init__(self, obs_dim, act_dim, hidden=64):
+        super().__init__()
+        self.shared = nn.Sequential(
+            nn.Linear(obs_dim, hidden), nn.Tanh(),
+            nn.Linear(hidden, hidden), nn.Tanh()
+        )
+        self.actor  = nn.Linear(hidden, act_dim)
+        self.critic = nn.Linear(hidden, 1)
 
-# Wrap optimizer with maximize=True for RL
-base_opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+model   = ActorCritic(8, 4)
+base_opt = torch.optim.Adam(model.parameters(), lr=LR, eps=1e-5)
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
     method="adaptive",
-    maximize=True,       # Important: RL maximizes reward!
-    sync_interval=50,    # Sync with cloud every 50 steps
-    verbose=True
+    base_lr=LR,
+    maximize=False,   # minimizing PPO surrogate loss
+    verbose=False
 )
 
-env = gym.make("LunarLander-v3")
-
-for episode in range(1000):
-    state, _ = env.reset()
-    log_probs, rewards = [], []
-    
-    # Collect episode
-    done = False
-    while not done:
-        logits = policy(torch.FloatTensor(state))
-        dist = torch.distributions.Categorical(logits=logits)
-        action = dist.sample()
-        log_probs.append(dist.log_prob(action))
-        state, reward, terminated, truncated, _ = env.step(action.item())
-        rewards.append(reward)
-        done = terminated or truncated
-    
-    # REINFORCE update
-    returns = []
-    G = 0
-    for r in reversed(rewards):
-        G = r + 0.99 * G
-        returns.insert(0, G)
-    returns = torch.tensor(returns)
-    returns = (returns - returns.mean()) / (returns.std() + 1e-8)
-    
-    loss = sum(-lp * G for lp, G in zip(log_probs, returns))
-    
-    opt.zero_grad()
-    loss.backward()
-    opt.step(sum(rewards))  # Pass episode return for Soft Algebra
+# PPO update inner loop
+for epoch in range(n_epochs):
+    for batch in rollout_batches:
+        loss = ppo_loss(model, batch)  # surrogate + value + entropy
+        opt.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+        opt.step(loss.item())   # pass dynamic loss
 
 opt.end()
 ```
 
-### Quantum Chemistry (VQE with Qiskit)
+### Reinforcement Learning — Stable-Baselines3
 
-```python
-import numpy as np
-from qiskit.circuit.library import EfficientSU2
-from qiskit.quantum_info import SparsePauliOp
-from qiskit_aer import AerSimulator
-from qiskit.primitives import BackendEstimatorV2
-from mobiu_q import MobiuOptimizer
+SB3 calls `optimizer.step()` internally. Use the callback pattern with `set_metric()`:
 
-LICENSE_KEY = "your-license-key-here"
-
-# H₂ Hamiltonian
-hamiltonian = SparsePauliOp.from_list([
-    ("II", -0.4804), ("ZZ", 0.3435), ("ZI", -0.4347),
-    ("IZ", 0.5716), ("XX", 0.0910), ("YY", 0.0910)
-])
-
-# Setup
-backend = AerSimulator()
-estimator = BackendEstimatorV2(backend=backend)
-estimator.options.default_shots = 4096
-
-ansatz = EfficientSU2(2, reps=2, entanglement="linear")
-params = np.random.uniform(-0.3, 0.3, ansatz.num_parameters)
-
-# Optimizer (NumPy mode - auto-delegates to MobiuQCore)
-opt = MobiuOptimizer(
-    params,
-    license_key=LICENSE_KEY,
-    method="standard",
-    mode="hardware",        # Use hardware mode for noisy backends
-    use_soft_algebra=True
-)
-
-# VQE loop with SPSA gradient
-for step in range(100):
-    # SPSA gradient estimation (2 circuit evaluations)
-    delta = np.random.choice([-1, 1], size=len(params))
-    shift = 0.1
-    
-    job = estimator.run([
-        (ansatz, hamiltonian, params),
-        (ansatz, hamiltonian, params + shift * delta),
-        (ansatz, hamiltonian, params - shift * delta)
-    ])
-    results = job.result()
-    
-    energy = float(results[0].data.evs)
-    grad = (float(results[1].data.evs) - float(results[2].data.evs)) / (2 * shift) * delta
-    
-    # Update params via Mobiu-Q
-    params = opt.step(params, grad, energy)
-    
-    if step % 20 == 0:
-        print(f"Step {step}: energy = {energy:.4f}")
-
-opt.end()
-print(f"Final energy: {energy:.4f}")  # Should approach -1.85
-```
-
-### Combinatorial Optimization (QAOA)
-
-```python
-import numpy as np
-from qiskit import QuantumCircuit
-from qiskit_aer import AerSimulator
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# MaxCut graph
-edges = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]
-n_qubits = 4
-p = 2  # QAOA layers
-
-def qaoa_circuit(params):
-    gammas, betas = params[:p], params[p:]
-    qc = QuantumCircuit(n_qubits)
-    qc.h(range(n_qubits))
-    for layer in range(p):
-        for i, j in edges:
-            qc.rzz(2 * gammas[layer], i, j)
-        for i in range(n_qubits):
-            qc.rx(2 * betas[layer], i)
-    qc.measure_all()
-    return qc
-
-def evaluate(params, shots=1024):
-    qc = qaoa_circuit(params)
-    counts = AerSimulator().run(qc, shots=shots).result().get_counts()
-    cost = 0
-    for bitstring, count in counts.items():
-        for i, j in edges:
-            if bitstring[-(i+1)] != bitstring[-(j+1)]:
-                cost += count
-    return -cost / shots  # Negative for minimization
-
-# Optimizer
-params = np.random.uniform(-np.pi, np.pi, 2 * p)
-opt = MobiuOptimizer(
-    params,
-    license_key=LICENSE_KEY,
-    method="deep",
-    mode="simulation"
-)
-
-for step in range(100):
-    # SPSA gradient
-    delta = np.random.choice([-1, 1], size=len(params))
-    shift = 0.1
-    e_plus = evaluate(params + shift * delta)
-    e_minus = evaluate(params - shift * delta)
-    energy = evaluate(params)
-    grad = (e_plus - e_minus) / (2 * shift) * delta
-    
-    params = opt.step(params, grad, energy)
-    
-    if step % 20 == 0:
-        print(f"Step {step}: MaxCut = {-energy:.2f}")
-
-opt.end()
-print(f"Final MaxCut value: {-energy:.2f}")
-```
-
-### Trading / Finance
-
-```python
-import torch
-import numpy as np
-from mobiu_q import MobiuOptimizer
-
-LICENSE_KEY = "your-license-key-here"
-
-# Simple trading policy: state → action probabilities
-policy = torch.nn.Sequential(
-    torch.nn.Linear(20, 64), torch.nn.ReLU(),
-    torch.nn.Linear(64, 32), torch.nn.ReLU(),
-    torch.nn.Linear(32, 3)  # Hold, Buy, Sell
-)
-
-base_opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="adaptive",
-    maximize=True,       # Maximize profit!
-    sync_interval=50,
-    verbose=True
-)
-
-# Training loop
-for episode in range(500):
-    state = get_market_state()  # Your market data
-    log_probs, rewards = [], []
-    
-    for step in range(episode_length):
-        logits = policy(torch.FloatTensor(state))
-        dist = torch.distributions.Categorical(logits=logits)
-        action = dist.sample()
-        log_probs.append(dist.log_prob(action))
-        
-        state, reward = execute_trade(action.item())  # Your trading logic
-        rewards.append(reward)
-    
-    # Policy gradient update
-    returns = compute_returns(rewards, gamma=0.99)
-    loss = sum(-lp * G for lp, G in zip(log_probs, returns))
-    
-    opt.zero_grad()
-    loss.backward()
-    opt.step(sum(rewards))  # Pass episode profit
-
-opt.end()
-```
-
-**Tip:** For even better results, use MobiuSignal features as your state representation. 
-See the MobiuSignal section for integration example.
-
----
-
-### Stable-Baselines3 (PPO, SAC, etc.)
-
-SB3 calls `optimizer.step()` internally without arguments. Use `set_metric()` to provide the reward:
 ```python
 import gymnasium as gym
 import numpy as np
@@ -644,50 +375,670 @@ from mobiu_q import MobiuOptimizer
 
 LICENSE_KEY = "your-license-key-here"
 
-class MobiuSB3Callback(BaseCallback):
-    """Callback that integrates Mobiu-Q with SB3."""
-    
-    def __init__(self, method="adaptive", use_soft_algebra=True, verbose=0):
+class MobiuCallback(BaseCallback):
+    def __init__(self, verbose=0):
         super().__init__(verbose=verbose)
-        self.method = method
-        self.use_soft_algebra = use_soft_algebra
-        self._mobiu = None
+        self._mobiu      = None
         self._ep_returns = []
-    
+
     def _on_training_start(self):
-        base_opt = self.model.policy.optimizer
+        base_opt    = self.model.policy.optimizer
         self._mobiu = MobiuOptimizer(
             base_opt,
             license_key=LICENSE_KEY,
-            method=self.method,
-            use_soft_algebra=self.use_soft_algebra,
-            maximize=True,
+            method="adaptive",
+            maximize=True,        # SB3 maximizes episode reward
             sync_interval=50,
-            verbose=True
+            verbose=False
         )
-        # Replace SB3's optimizer
         self.model.policy.optimizer = self._mobiu
-    
+
     def _on_step(self):
         for info in self.locals.get("infos", []):
             if "episode" in info:
-                ep_return = info["episode"]["r"]
-                self._ep_returns.append(ep_return)
-                # Update metric with rolling average
-                recent = self._ep_returns[-4:]
-                self._mobiu.set_metric(np.mean(recent))
+                self._ep_returns.append(info["episode"]["r"])
+                self._mobiu.set_metric(np.mean(self._ep_returns[-4:]))
         return True
-    
+
     def _on_training_end(self):
         if self._mobiu:
             self._mobiu.end()
 
-
-# Usage
-env = gym.make("LunarLander-v3")
+env   = gym.make("LunarLander-v3")
 model = PPO("MlpPolicy", env, learning_rate=3e-4, verbose=0)
-model.learn(total_timesteps=200_000, callback=MobiuSB3Callback())
+model.learn(total_timesteps=200_000, callback=MobiuCallback())
 ```
+
+### Quantum Chemistry (VQE)
+
+```python
+import numpy as np
+from qiskit.circuit.library import EfficientSU2
+from qiskit.quantum_info import SparsePauliOp
+from qiskit_aer import AerSimulator
+from qiskit.primitives import BackendEstimatorV2
+from mobiu_q import MobiuQCore
+
+try:
+    from qiskit_ibm_runtime.fake_provider import FakeFezV2 as FakeBackend
+except ImportError:
+    from qiskit_ibm_runtime.fake_provider import FakeFez as FakeBackend
+
+LICENSE_KEY = "your-license-key-here"
+LR          = 0.02   # standard + hardware default
+
+# H₂ Hamiltonian
+hamiltonian = SparsePauliOp.from_list([
+    ("II", -0.4804), ("ZZ", 0.3435), ("ZI", -0.4347),
+    ("IZ",  0.5716), ("XX",  0.0910), ("YY",  0.0910)
+])
+
+backend   = AerSimulator.from_backend(FakeBackend())
+estimator = BackendEstimatorV2(backend=backend)
+estimator.options.default_shots  = 4096
+estimator.options.seed_simulator = 42
+
+ansatz     = EfficientSU2(2, reps=4, entanglement="linear")
+pm         = generate_preset_pass_manager(backend=backend, optimization_level=1)
+isa_ansatz = pm.run(ansatz)
+isa_ops    = hamiltonian.apply_layout(isa_ansatz.layout)
+
+# Same baseline optimizer (Pure Adam) and Mobiu use base_lr=LR
+# Pre-generate SPSA deltas so both see identical gradients
+np.random.seed(seed * 1000)
+spsa_deltas = [np.random.choice([-1, 1], size=ansatz.num_parameters)
+               for _ in range(NUM_STEPS)]
+
+# --- Pure Adam baseline ---
+class PureAdam:
+    def __init__(self, params_np, lr=LR):
+        self._tensor = torch.tensor(params_np, dtype=torch.float64, requires_grad=True)
+        self._opt    = torch.optim.Adam([self._tensor], lr=lr)
+    def step(self, params_np, grad_np):
+        self._opt.zero_grad()
+        self._tensor.grad = torch.tensor(grad_np, dtype=torch.float64)
+        self._opt.step()
+        return self._tensor.detach().numpy().copy()
+
+# --- Mobiu-Q ---
+params    = init_params.copy()
+mobiu_opt = MobiuQCore(
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="hardware",
+    base_lr=LR,
+    verbose=False
+)
+
+for step in range(NUM_STEPS):
+    job = estimator.run([
+        (isa_ansatz, isa_ops, params),
+        (isa_ansatz, isa_ops, params + 0.1 * spsa_deltas[step]),
+        (isa_ansatz, isa_ops, params - 0.1 * spsa_deltas[step])
+    ])
+    results = job.result()
+    energy  = float(results[0].data.evs)
+    grad    = (float(results[1].data.evs) - float(results[2].data.evs)) / 0.2 * spsa_deltas[step]
+    params  = mobiu_opt.step(params, grad, energy)
+
+mobiu_opt.end()
+print(f"Final energy: {energy:.4f}")   # H₂ ground state: -1.846 Ha
+```
+
+### QAOA (MaxCut / MIS)
+
+```python
+import torch
+import torch.nn as nn
+import numpy as np
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR          = 0.1   # deep + hardware default
+
+class QAOAModel(nn.Module):
+    def __init__(self, n_params, init_values):
+        super().__init__()
+        self.theta = nn.Parameter(torch.tensor(init_values, dtype=torch.float32))
+
+# Wrap SGD — customer's optimizer runs, Mobiu enhances
+model    = QAOAModel(n_params, init_params)
+base_opt = torch.optim.SGD(model.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="deep",
+    mode="hardware",
+    base_lr=LR,
+    verbose=False
+)
+
+for step in range(100):
+    params_np = model.theta.detach().cpu().numpy()
+    energy, grad_np = get_qaoa_energy_and_gradient(params_np, spsa_deltas[step])
+
+    opt.zero_grad()
+    model.theta.grad = torch.tensor(grad_np, dtype=torch.float32)
+    opt.step(energy)
+
+opt.end()
+```
+
+### Machine Learning — Federated Learning
+
+```python
+import torch
+from mobiu_q import MobiuQCore
+import numpy as np
+
+LICENSE_KEY = "your-license-key-here"
+LR          = 0.01
+
+params  = np.random.randn(dim) * 0.5
+opt     = MobiuQCore(
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="simulation",
+    base_optimizer="Adam",
+    base_lr=LR,
+    verbose=False
+)
+
+for step in range(N_STEPS):
+    energy   = global_loss(params)
+    gradient = federated_gradient(params, step)   # biased from non-IID clients
+    params   = opt.step(params, gradient, energy)
+
+opt.end()
+```
+
+### Machine Learning — Imbalanced / Noisy Labels / Sim-to-Real
+
+Same pattern for all systematic-bias domains — just swap the gradient source:
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 0.001
+
+model    = Classifier()
+base_opt = torch.optim.Adam(model.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=LR,
+    verbose=False
+)
+
+for batch_x, noisy_labels in train_loader:
+    loss = criterion(model(batch_x), noisy_labels)
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())   # dynamic loss — Soft Algebra detects label bias
+
+opt.end()
+```
+
+### Why Soft Algebra Works for Systematic Bias
+
+In all these domains the **gradient is systematically biased** away from the true loss direction:
+- **Federated:** each client sees different data distribution → aggregated gradient biased
+- **Imbalanced:** gradient dominated by majority class → minority classes underfit
+- **Sim-to-Real:** simulator has wrong physics (friction, mass) → gradient points to wrong target
+- **Noisy Labels:** labels consistently confused (e.g., 3↔8) → gradient points wrong way
+
+Soft Algebra tracks the gap between gradient direction and actual loss improvement, then corrects for it. This is exactly what the realized component `b_t` measures.
+
+### Federated Learning — Detailed Example
+
+```python
+import numpy as np
+from mobiu_q import MobiuQCore
+
+LICENSE_KEY = "your-license-key-here"
+LR = 0.01
+
+class FederatedTrainer:
+    def __init__(self, n_clients=10, non_iid_strength=0.8):
+        self.n_clients = n_clients
+        self.client_biases = [np.random.randn(dim) * non_iid_strength
+                              for _ in range(n_clients)]
+
+    def federated_gradient(self, params, step):
+        np.random.seed(step)
+        sampled = np.random.choice(self.n_clients, size=5, replace=False)
+        grads = []
+        for c in sampled:
+            target = true_optimum + self.client_biases[c]
+            grads.append(2 * (params - target) / dim)
+        return np.mean(grads, axis=0)
+
+trainer = FederatedTrainer()
+params  = np.random.randn(dim) * 0.5
+opt     = MobiuQCore(
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="simulation",
+    base_optimizer="Adam",
+    base_lr=LR,
+    verbose=False
+)
+
+for step in range(80):
+    energy   = global_loss(params)
+    gradient = trainer.federated_gradient(params, step)
+    params   = opt.step(params, gradient, energy)
+
+opt.end()
+```
+
+### Imbalanced Data — Detailed Example
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 0.001
+
+# 90% class 0, 10% class 1 — gradient dominated by majority
+train_loader = create_imbalanced_loader(imbalance_ratio=0.9)
+
+model    = FraudDetector()
+base_opt = torch.optim.Adam(model.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=LR,
+    verbose=False
+)
+
+for batch_x, labels in train_loader:
+    loss = criterion(model(batch_x), labels)
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())   # Soft Algebra detects majority-class bias
+
+opt.end()
+```
+
+### Sim-to-Real — Detailed Example
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 0.001
+
+policy   = RobotPolicy()
+base_opt = torch.optim.Adam(policy.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=LR,
+    verbose=False
+)
+
+for step in range(80):
+    energy   = real_world_loss(policy)        # evaluated in reality
+    gradient = simulator_gradient(policy, step)  # biased (wrong physics)
+    # Use MobiuQCore NumPy-style if working with param arrays,
+    # or opt.zero_grad() + loss.backward() + opt.step(loss.item()) in PyTorch
+    opt.zero_grad()
+    apply_grad_to_policy(policy, gradient)
+    opt.step(energy)
+
+opt.end()
+```
+
+### Noisy Labels — Detailed Example
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 0.001
+
+# Systematic confusion: class i mislabeled as class (i+1) — 30% rate
+train_loader = create_noisy_label_loader(noise_rate=0.3)
+
+model    = Classifier()
+base_opt = torch.optim.Adam(model.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="standard",
+    base_lr=LR,
+    verbose=False
+)
+
+for batch_x, noisy_labels in train_loader:
+    loss = criterion(model(batch_x), noisy_labels)
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())   # Soft Algebra detects systematic label mismatch
+
+opt.end()
+```
+
+### REINFORCE
+
+```python
+import torch
+import gymnasium as gym
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 3e-4
+
+policy   = torch.nn.Sequential(
+    torch.nn.Linear(8, 64), torch.nn.Tanh(),
+    torch.nn.Linear(64, 64), torch.nn.Tanh(),
+    torch.nn.Linear(64, 4)
+)
+base_opt = torch.optim.Adam(policy.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    base_lr=LR,
+    maximize=False,   # minimizing policy surrogate loss
+    verbose=False
+)
+
+env = gym.make("LunarLander-v3")
+
+for episode in range(1000):
+    state, _    = env.reset()
+    log_probs, rewards = [], []
+    done = False
+    while not done:
+        logits = policy(torch.FloatTensor(state))
+        dist   = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()
+        log_probs.append(dist.log_prob(action))
+        state, reward, terminated, truncated, _ = env.step(action.item())
+        rewards.append(reward)
+        done = terminated or truncated
+
+    returns = []
+    G = 0
+    for r in reversed(rewards):
+        G = r + 0.99 * G
+        returns.insert(0, G)
+    returns = torch.tensor(returns)
+    returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+
+    loss = sum(-lp * G for lp, G in zip(log_probs, returns))
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())   # pass surrogate loss, not episode return
+
+opt.end()
+```
+
+### Trading / Finance (RL)
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR = 3e-4
+
+policy   = TradingPolicy()  # outputs Hold/Buy/Sell
+base_opt = torch.optim.Adam(policy.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    base_lr=LR,
+    maximize=False,   # minimizing policy loss
+    verbose=False
+)
+
+for episode in range(500):
+    log_probs, rewards = collect_episode(policy, market_data)
+    returns = compute_returns(rewards, gamma=0.99)
+
+    loss = sum(-lp * G for lp, G in zip(log_probs, returns))
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())
+
+opt.end()
+```
+
+### Custom / External Optimizers
+
+Mobiu-Q wraps **any** optimizer with a standard PyTorch interface:
+
+```python
+# Muon optimizer
+from muon import Muon
+base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", base_lr=0.02)
+
+# LAMB from apex
+from apex.optimizers import FusedLAMB
+base_opt = FusedLAMB(model.parameters(), lr=0.001)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="standard", base_lr=0.001)
+
+# Adafactor from transformers
+from transformers import Adafactor
+base_opt = Adafactor(model.parameters(), lr=1e-3, relative_step=False)
+opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive", base_lr=1e-3)
+```
+
+**Requirements:** optimizer must have `.step()`, `.zero_grad()`, and `.param_groups`.
+
+### MobiuSignal + MobiuOptimizer Integration (RL Trading)
+
+Use MobiuSignal features as your policy state, MobiuOptimizer as your optimizer:
+
+```python
+from mobiu_q import MobiuOptimizer
+from mobiu_q.signal import MobiuSignal
+import torch, torch.nn as nn
+
+LICENSE_KEY = "your-license-key-here"
+LR = 3e-4
+
+class TradingPolicy(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(5, 64), nn.Tanh(),
+            nn.Linear(64, 64), nn.Tanh(),
+            nn.Linear(64, 3)  # Hold, Buy, Sell
+        )
+    def forward(self, features):
+        # features: [potential, realized, magnitude, position, pnl]
+        return self.net(features)
+
+signal   = MobiuSignal(lookback=20)
+policy   = TradingPolicy()
+base_opt = torch.optim.Adam(policy.parameters(), lr=LR)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    base_lr=LR,
+    maximize=False,
+    verbose=False
+)
+
+for episode in range(500):
+    signal.reset()
+    log_probs, rewards = [], []
+    for price in price_series:
+        result = signal.update(price)
+        if result is None:
+            continue
+        state  = [result.potential, result.realized, result.magnitude, position, pnl]
+        logits = policy(torch.FloatTensor(state))
+        dist   = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()
+        log_probs.append(dist.log_prob(action))
+        rewards.append(execute_trade(action.item()))
+
+    returns = compute_returns(rewards)
+    loss    = sum(-lp * G for lp, G in zip(log_probs, returns))
+    opt.zero_grad()
+    loss.backward()
+    opt.step(loss.item())
+
+opt.end()
+```
+
+### LLM Fine-tuning (LoRA / Full)
+
+```python
+import torch
+from mobiu_q import MobiuOptimizer
+
+LICENSE_KEY = "your-license-key-here"
+LR          = 5e-3
+
+# SGD with momentum works best for LoRA adapter layers
+base_opt = torch.optim.SGD(lora_params, lr=LR, momentum=0.9)
+opt      = MobiuOptimizer(
+    base_opt,
+    license_key=LICENSE_KEY,
+    method="adaptive",
+    base_lr=LR,
+    maximize=False,
+    sync_interval=50,
+    verbose=False
+)
+
+for epoch in range(num_epochs):
+    for batch in train_loader:
+        loss = criterion(model(batch))
+        opt.zero_grad()
+        loss.backward()
+        opt.step(loss.item())
+        # Optionally: opt.set_metric(-eval_loss)  # use eval signal
+
+opt.end()
+```
+
+### Black-box / SPSA Optimization (Classical)
+
+For antenna design, hyperparameter optimization, sensor calibration — landscapes similar to VQE:
+
+```python
+import numpy as np
+from mobiu_q import MobiuQCore
+
+LICENSE_KEY = "your-license-key-here"
+LR          = 0.1
+
+params  = np.random.uniform(-5, 5, N_PARAMS)
+opt     = MobiuQCore(
+    license_key=LICENSE_KEY,
+    method="standard",
+    mode="hardware",
+    base_lr=LR,
+    verbose=False
+)
+
+# Pre-generate deltas — same for baseline and Mobiu (fair comparison)
+np.random.seed(seed * 1000)
+spsa_deltas = [np.random.choice([-1, 1], size=N_PARAMS) for _ in range(N_STEPS)]
+
+for step in range(N_STEPS):
+    delta = spsa_deltas[step]
+    ck    = 0.1 / ((step + 1) ** 0.101)
+
+    e_plus  = evaluate_with_noise(params + ck * delta)
+    e_minus = evaluate_with_noise(params - ck * delta)
+    e_center = evaluate_with_noise(params)
+    grad    = (e_plus - e_minus) / (2 * ck) * delta
+
+    params = opt.step(params, grad, e_center)
+
+opt.end()
+```
+
+---
+
+## Troubleshooting
+
+### 1. Switch Base Optimizer
+
+| Problem Type | Recommended |
+|--------------|-------------|
+| LoRA / LLM | `torch.optim.SGD(momentum=0.9)` |
+| VQE / Chemistry | `torch.optim.Adam` |
+| QAOA | `torch.optim.SGD` or `NAdam` |
+| RL / Trading | `torch.optim.Adam` |
+| Federated / Imbalanced | `torch.optim.Adam` |
+
+### 2. Switch Method
+
+| Current | Try Instead |
+|---------|-------------|
+| `standard` → not improving | `adaptive` |
+| `adaptive` → too noisy | `deep` |
+| `deep` → slow | `standard` |
+
+### 3. Mode (Quantum/NumPy only)
+
+| Current | Try Instead |
+|---------|-------------|
+| `simulation` | `hardware` |
+
+### 4. Adjust Learning Rate
+
+Always pass `base_lr=` explicitly. If diverging, lower LR on the base optimizer. If stuck, raise it.
+
+### 5. Common Fixes by Domain
+
+| Domain | Issue | Fix |
+|--------|-------|-----|
+| **RL (PPO)** | rewards unstable | `maximize=False` + `loss.item()` |
+| **SB3** | can't pass loss | use callback + `set_metric(reward)` |
+| **VQE** | gradient mismatch | pre-generate SPSA deltas, same for both |
+| **LoRA** | slow convergence | `SGD(momentum=0.9)` + `adaptive` |
+| **Federated** | high variance | `standard` + `base_lr=0.01` |
+
+---
+
+## MobiuOptimizer — A/B Testing
+
+To verify Soft Algebra provides value (not just LR scheduling), compare `use_soft_algebra=True` vs `False` with the same optimizer:
+
+```python
+# SA ON
+opt_on  = MobiuOptimizer(base_opt, license_key=LICENSE_KEY,
+                          use_soft_algebra=True)
+
+# SA OFF (same LR scheduling, no nilpotent algebra)
+opt_off = MobiuOptimizer(base_opt, license_key=LICENSE_KEY,
+                          use_soft_algebra=False)
+```
+
+**Ablation result (H₂ VQE, FakeFez, 20 seeds):**
+
+| Method | Mean Energy | Gap to Ground State | vs Baseline |
+|--------|-------------|---------------------|-------------|
+| Mobiu-Q SA ON (ε²=0) | -1.6678 Ha | 178 mHa | **+53.8%** ✅ |
+| Baseline SA OFF | -1.4603 Ha | 386 mHa | — |
+| Fake SA (regular ×) | -1.4597 Ha | 386 mHa | -0.2% ❌ |
+
+- SA ON vs Baseline: **20/20** wins
+- SA ON vs Fake SA: **20/20** wins  
+- Fake SA vs Baseline: **9/20** (random)
+
+**Conclusion:** The nilpotent property ε²=0 is what drives the improvement — not LR scaling alone. Fake SA (regular multiplication) is statistically indistinguishable from the baseline. The difference between Real SA and Fake SA is **270×**.
 
 ---
 
@@ -704,6 +1055,7 @@ Trading signal generator using the same Soft Algebra potential/realized framewor
 | Precision lift | **1.18x** vs random |
 
 ### Mathematical Framework
+
 ```
 Potential (aₜ) = σₜ/μₜ × scale    # Normalized volatility
 Realized (bₜ)  = (Pₜ - Pₜ₋₁)/Pₜ₋₁  # Price change
@@ -711,500 +1063,119 @@ Magnitude      = √(aₜ² + bₜ²)      # Signal strength
 ```
 
 ### Usage
-```python
-from mobiu_q.signal import MobiuSignal, SignalResult
 
-# Basic usage
+```python
+from mobiu_q.signal import MobiuSignal, backtest_signal
+
 signal = MobiuSignal(lookback=20, vol_scale=100)
 result = signal.compute(prices)
 
-print(f"Potential: {result.potential:.3f}")
-print(f"Realized: {result.realized:.3f}%")
-print(f"Magnitude: {result.magnitude:.3f}")
-print(f"Direction: {result.direction}")  # +1, -1, or 0
-print(f"Quartile: Q{result.quartile}")   # 1-4 (4=strongest)
+print(f"Potential:  {result.potential:.3f}")
+print(f"Realized:   {result.realized:.3f}%")
+print(f"Magnitude:  {result.magnitude:.3f}")
+print(f"Direction:  {result.direction}")   # +1, -1, or 0
+print(f"Quartile:   Q{result.quartile}")   # 1–4 (4=strongest)
 
-# Check signal strength
-if result.is_strong:  # Top quartile
-    if result.is_bullish:
-        print("🚀 Strong bullish signal!")
-    else:
-        print("🔻 Strong bearish signal!")
-```
-
-### Streaming Mode
-```python
-signal = MobiuSignal(lookback=20)
-
+# Streaming
 for price in live_price_stream:
     result = signal.update(price)
     if result and result.is_strong:
         execute_trade(result.direction)
+
+# Backtest
+bt = signal.backtest(historical_prices, future_window=5)
+print(f"Correlation: {bt.correlation:.3f} (p={bt.correlation_pvalue:.4f})")
+print(f"Q4/Q1 Ratio: {bt.q4_q1_ratio:.2f}x")
 ```
 
-### Backtesting
-```python
-from mobiu_q.signal import MobiuSignal, backtest_signal
-
-# Full backtest
-signal = MobiuSignal(lookback=20)
-result = signal.backtest(prices, future_window=5)
-
-print(f"Total signals: {result.total_signals}")
-print(f"Strong signals: {result.strong_signals}")
-print(f"Correlation: {result.correlation:.3f} (p={result.correlation_pvalue:.4f})")
-print(f"Q4/Q1 Ratio: {result.q4_q1_ratio:.2f}x")
-print(f"Precision Lift: {result.precision_lift:.2f}x")
-
-# Quick backtest
-result = backtest_signal(prices, lookback=20, future_window=5)
-```
-
-### Series Analysis
-```python
-signal = MobiuSignal(lookback=20)
-results = signal.compute_series(prices)
-
-# Find all strong signals
-strong = [r for r in results if r.is_strong]
-print(f"Found {len(strong)} strong signals out of {len(results)}")
-```
-
-### When to Use
-
-| Scenario | Recommendation |
-|----------|----------------|
-| Day trading | `lookback=10-20` |
-| Swing trading | `lookback=20-50` |
-| High volatility | Lower `vol_scale` |
-| Low volatility | Higher `vol_scale` |
-
-**Note:** MobiuSignal runs **100% locally** - no API calls, no license key needed.
-
----
-
-### Integration with MobiuOptimizer (RL Trading)
-
-Combine MobiuSignal features with MobiuOptimizer for RL-based trading:
-```python
-from mobiu_q import MobiuOptimizer
-from mobiu_q.signal import MobiuSignal
-import torch
-import torch.nn as nn
-
-LICENSE_KEY = "your-license-key-here"
-
-# Policy uses MobiuSignal features as state
-class TradingPolicy(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(5, 64), nn.Tanh(),
-            nn.Linear(64, 64), nn.Tanh(),
-            nn.Linear(64, 3)  # Hold, Buy, Sell
-        )
-    
-    def forward(self, signal_features):
-        # signal_features: [potential, realized, magnitude, position, pnl]
-        return self.net(signal_features)
-
-# Setup
-signal = MobiuSignal(lookback=20)
-policy = TradingPolicy()
-base_opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
-opt = MobiuOptimizer(
-    base_opt,
-    license_key=LICENSE_KEY,
-    method="adaptive",
-    maximize=True,  # Maximize profit!
-    use_soft_algebra=True
-)
-
-# Training loop
-for episode in range(500):
-    signal.reset()
-    # ... collect episode using signal.update(price) for state ...
-    # ... REINFORCE update ...
-    opt.step(episode_profit)
-
-opt.end()
-```
-
-**Validated Results (30 seeds, 500 episodes, regime switching):**
-
-| Metric | Adam | Mobiu | Δ |
-|--------|------|-------|---|
-| Final PnL | -4.7 | +3.2 | **+168.7%** |
-| Win Rate | - | 83.3% | 25/30 seeds |
-| p-value | - | - | 0.000012 |
-
-*Adam lost money on average; Mobiu turned it profitable.*
-
-See `examples/rl_trading_mobiu_benchmark.py` for full implementation.
-
----
-
-## Base Optimizers
-
-### PyTorch Mode
-Use **any** PyTorch optimizer — Mobiu-Q wraps it with Soft Algebra.
-Your optimizer always runs; Mobiu-Q enhances it via adaptive learning rate and gradient warping:
-
-```python
-# Any of these work — your optimizer actually runs:
-base_opt = torch.optim.Adam(model.parameters(), lr=0.0003)
-base_opt = torch.optim.AdamW(model.parameters(), lr=0.0003)
-base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
-base_opt = torch.optim.NAdam(model.parameters(), lr=0.001)
-
-# Even custom/external optimizers:
-from muon import Muon
-base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
-
-# Wrap with Mobiu-Q — your optimizer runs, SA enhances it:
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-```
-
-### Quantum/NumPy Mode
-Server-side optimization with Adam + Soft Algebra.
-You provide params, gradient, and energy; Mobiu-Q returns optimized params:
-
-```python
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="deep", mode="hardware")
-params = opt.step(params, grad, energy)
-```
----
-
-## 🛠️ Troubleshooting
-
-If optimization is not improving or diverging, try these adjustments:
-
-### 1. Switch Base Optimizer (PyTorch mode)
-
-> **Note:** These recommendations apply to **PyTorch mode** where your optimizer runs directly.
-> In Quantum/NumPy mode, the server handles optimization internally.
-
-Different optimizers work better for different problems:
-
-| Problem Type | Recommended Optimizer |
-|--------------|----------------------|
-| LoRA / LLM | `torch.optim.SGD` with momentum |
-| VQE / Chemistry | `torch.optim.Adam` |
-| QAOA | `torch.optim.NAdam` |
-| RL / Trading | `torch.optim.SGD` with momentum |
-| Drug Discovery | `torch.optim.Adam(amsgrad=True)` |
-| Large Batch | LAMB (from `apex` or custom) |
-| Federated Learning | `torch.optim.Adam` |
-| Imbalanced Data | `torch.optim.Adam` |
-| Sim-to-Real | `torch.optim.Adam` + `adaptive` |
-| Noisy Labels | `torch.optim.Adam` |
-
-```python
-LICENSE_KEY = "your-license-key-here"
-
-# PyTorch: If Adam isn't working, try Momentum:
-base_opt = torch.optim.SGD(model.parameters(), lr=0.02, momentum=0.9)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-```
-
-### 2. Switch Method
-
-| If This Fails | Try This |
-|---------------|----------|
-| `standard` | `adaptive` |
-| `adaptive` | `deep` |
-| `deep` | `standard` |
-
-```python
-# If standard isn't working for your problem:
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-```
-
-### 3. Switch Mode (Quantum only)
-
-| If This Fails | Try This |
-|---------------|----------|
-| `simulation` | `hardware` |
-
-```python
-opt = MobiuOptimizer(params, license_key=LICENSE_KEY, method="standard", mode="hardware")
-```
-
-### 4. Adjust Learning Rate
-
-```python
-# Try lower LR if diverging
-base_opt = torch.optim.Adam(model.parameters(), lr=0.0001)
-
-# Try higher LR if stuck
-base_opt = torch.optim.Adam(model.parameters(), lr=0.001)
-```
-
-### 5. Common Fixes by Domain
-
-| Domain | Common Issue | Fix |
-|--------|--------------|-----|
-| **LoRA** | SGD + high LR diverges | Use `torch.optim.SGD(momentum=0.9)` + LR=0.02 |
-| **Drug Discovery** | BCE loss unstable | Use `torch.optim.Adam(amsgrad=True)` + `standard` |
-| **Crypto/RL** | High variance | Use `torch.optim.SGD(momentum=0.9)` + `adaptive` |
-| **QAOA** | Local minima | Use `torch.optim.NAdam` + `deep` method |
-| **Federated** | Non-IID variance | Use `torch.optim.Adam` + `standard` + LR=0.01 |
-| **Imbalanced** | Majority bias | Use `torch.optim.Adam` + `standard` + LR=0.01 |
-
----
-
-### Custom / External Optimizers
-
-Mobiu-Q wraps **any** optimizer with a PyTorch-compatible interface:
-```python
-# Example: Muon optimizer (https://github.com/KellerJordan/Muon)
-from muon import Muon
-
-base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-
-# Example: LAMB from apex
-from apex.optimizers import FusedLAMB
-
-base_opt = FusedLAMB(model.parameters(), lr=0.001)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="standard")
-
-# Example: Adafactor from transformers
-from transformers import Adafactor
-
-base_opt = Adafactor(model.parameters(), lr=1e-3, relative_step=False)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive")
-```
-
-**Requirements:** The optimizer must have:
-- `.step()` method
-- `.zero_grad()` method  
-- `.param_groups` attribute
-
-Most modern optimizers meet these requirements.
+**Note:** MobiuSignal runs **100% locally** — no API calls, no license key.
 
 ---
 
 ## MobiuAttention 🧪
 
-### Why?
+### Performance
 
-Standard Transformer attention is O(N²) in sequence length. MobiuAttention is **O(N)**.
-
-| Seq Length | Transformer | MobiuAttention | Speedup | Memory Saving |
-|------------|-------------|----------------|---------|---------------|
-| 4,096      | 16.9ms      | 16.4ms         | ~1x     | ~Equal        |
-| 8,192      | 75.3ms      | **33.8ms**     | **2.2x** ✅ | **50%** ✅   |
-| 16,384     | **OOM** 💥  | Works          | ∞       | ∞             |
+| Seq Length | Transformer | MobiuAttention | Speedup |
+|------------|-------------|----------------|---------|
+| 4,096      | 16.9ms      | 16.4ms         | ~1x     |
+| 8,192      | 75.3ms      | **33.8ms**     | **2.2x** ✅ |
+| 16,384     | **OOM** 💥  | Works          | ∞       |
 
 *Tested on T4 GPU, batch=2, d_model=128*
-
-### Quality (Same as Transformer)
-
-| Benchmark            | Transformer | MobiuAttention |
-|----------------------|-------------|----------------|
-| Shakespeare PPL      | 12.3        | **12.2** ✅            |
-| ListOps Accuracy     | 81%         | 82%            |
-| Needle-in-Haystack   | 100%        | 100%           |
 
 ### Usage
 
 ```python
 from mobiu_q.experimental import MobiuBlock
+import torch.nn as nn
 
-# No license key needed - runs locally!
 class LongContextLM(nn.Module):
     def __init__(self, vocab, d=512, h=8, layers=6):
         super().__init__()
-        self.embed = nn.Embedding(vocab, d)
+        self.embed  = nn.Embedding(vocab, d)
         self.blocks = nn.Sequential(*[MobiuBlock(d, h) for _ in range(layers)])
-        self.head = nn.Linear(d, vocab)
-    
+        self.head   = nn.Linear(d, vocab)
     def forward(self, x):
         return self.head(self.blocks(self.embed(x)))
 
-# Works with 16K+ tokens!
 model = LongContextLM(50000)
-x = torch.randint(0, 50000, (1, 16384))
-out = model(x)  # No OOM!
+x     = torch.randint(0, 50000, (1, 16384))
+out   = model(x)   # no OOM
 ```
 
-### When to Use MobiuAttention
+### Combining with MobiuOptimizer
 
-| Scenario | Recommendation |
-|----------|----------------|
-| **GPU + seq > 4K** | ✅ **Use MobiuAttention** - 2x faster, 50% less memory |
-| **GPU + seq < 4K** | Standard Transformer is fine |
-| **Apple Silicon (MPS)** | Equal quality, Transformer slightly faster |
-| **Very long context (>8K)** | ✅ **MobiuAttention only option** - Transformer OOMs |
+| Configuration | Result |
+|---------------|--------|
+| Standard Attention + MobiuOptimizer | ✅ **Best quality** |
+| MobiuAttention + Adam | Good for long context |
+| MobiuAttention + MobiuOptimizer | May interfere — test first |
 
-**Key insight:** MobiuAttention maintains the same quality (PPL) while enabling 
-longer contexts that would otherwise cause out-of-memory errors.
-
-**Note:** MobiuAttention runs **100% locally** - no API calls, no license key needed.
-It's included in the `mobiu-q` package but operates independently of the cloud service.
-
-### ⚠️ Combining MobiuAttention with MobiuOptimizer
-
-Based on our testing, **combining both products may cause interference**:
-
-| Configuration | PPL | Result |
-|---------------|-----|--------|
-| Standard + Adam | 11.86 | Baseline |
-| Standard + MobiuOptimizer | **3.85** | ✅ Best! (+67.5%) |
-| MobiuAttention + Adam | 11.05 | Good (+6.8%) |
-| MobiuAttention + MobiuOptimizer | 9.84 | ⚠️ Interference (+17%) |
-
-**Recommendation:**
-- For **best quality**: Use MobiuOptimizer alone (Standard Attention)
-- For **long context (>4K tokens)**: Use MobiuAttention alone
-- **Don't combine** unless you've tested on your specific use case
-
-### Verified Performance (Fair A/B Test)
-
-**Shakespeare Language Modeling:**
-| Configuration | PPL | Improvement |
-|---------------|-----|-------------|
-| Adam (baseline) | 11.86 | - |
-| **MobiuOptimizer (adaptive)** | **3.85** | **+67.5%** ✅ |
-
-*Same API, same hyperparameters, only `use_soft_algebra` differs*
-
-**Key Insight:** Soft Algebra provides real value - not just adaptive LR!
-
-### ⚠️ Experimental Status
-
-- Functional and tested
-- API may change in future versions
-- Feedback welcome!
+**Note:** MobiuAttention runs **100% locally** — no license key.
 
 ---
 
-## 🛡️ Anomaly Detection (NEW in v3.9.0)
+## 🛡️ Anomaly Detection
 
-Mobiu-Q now includes **anomaly detection** using the same Soft Algebra mathematics as the optimizer.
-
-### MobiuAD - Streaming Detector
-
-Detect anomalies in real-time data streams:
+### MobiuAD — Streaming Detector
 
 ```python
 from mobiu_q import MobiuAD
 
-LICENSE_KEY = "your-license-key-here"
-
 detector = MobiuAD(license_key=LICENSE_KEY, method="deep")
-
 for value in data_stream:
     result = detector.detect(value)
     if result.is_anomaly:
         print(f"⚠️ Anomaly! Δ†={result.delta_dagger:.4f}")
 ```
 
-### Detection Methods
-
-| Method | Use Case | Best For |
-|--------|----------|----------|
-| `standard` | Trust Ratio based | Simple anomalies |
-| `deep` | Super-Equation Δ† | Behavioral changes (recommended) |
-| `transition` | Regime detection | Pattern shifts |
-
-### TrainGuard - Safe ML Training
-
-Combines MobiuOptimizer + MobiuAD to monitor training health:
+### TrainGuard — Safe ML Training
 
 ```python
 from mobiu_q import TrainGuard
 
-LICENSE_KEY = "your-license-key-here"
-
 guard = TrainGuard(license_key=LICENSE_KEY)
-
 for epoch in range(100):
-    loss = train_epoch(model)
-    val_loss = evaluate(model)
-    gradient = get_gradient_norm(model)
-    
-    result = guard.step(
-        loss=loss,
-        gradient=gradient,
-        val_loss=val_loss
-    )
-    
-    # Apply optimized gradient
-    apply_gradient(result.adjusted_gradient)
-    
-    # Check for training issues
+    result = guard.step(loss=train_loss, gradient=grad_norm, val_loss=val_loss)
     if result.alert:
         if result.alert_type == 'GRADIENT_EXPLOSION':
-            print("💥 Gradient explosion detected!")
             reduce_lr()
         elif result.alert_type == 'OVERFITTING':
-            print("📈 Overfitting detected!")
             apply_regularization()
-        elif result.alert_type == 'LOSS_SPIKE':
-            print("⚡ Loss spike detected!")
-            restore_checkpoint()
-
 guard.end()
-```
-
-### TrainGuard Alerts
-
-| Alert Type | Trigger | Suggested Action |
-|------------|---------|------------------|
-| `GRADIENT_EXPLOSION` | Gradient norm spike | Reduce LR, clip gradients |
-| `OVERFITTING` | Val loss ↑ while train loss ↓ | Early stop, regularize |
-| `LOSS_SPIKE` | Sudden loss increase | Restore checkpoint |
-| `PLATEAU` | No improvement | Increase LR, change optimizer |
-
-### Batch Detection
-
-```python
-from mobiu_q import MobiuAD
-
-LICENSE_KEY = "your-license-key-here"
-
-detector = MobiuAD(license_key=LICENSE_KEY)
-
-# Detect anomalies in batch
-results = detector.detect_batch(data_array)
-print(f"Found {results.total_anomalies} anomalies at indices: {results.anomaly_indices}")
 ```
 
 ### MobiuAD vs PyOD
 
 | Feature | MobiuAD | PyOD |
 |---------|---------|------|
-| **Type** | Streaming | Batch |
-| **Detects** | Behavioral changes | Statistical outliers |
-| **Real-time** | ✅ Yes | ❌ No |
-| **Early warning** | ✅ Yes | ❌ No |
-| **Pattern changes** | ✅ Excellent | ⚠️ Limited |
-| **Value outliers** | ⚠️ Good | ✅ Excellent |
-
-**Use MobiuAD when:**
-- Real-time streaming detection needed
-- Detecting behavioral/pattern changes
-- Early warning before anomalies manifest
-- Monitoring ML training (TrainGuard)
-
-**Use PyOD when:**
-- Batch analysis of static data
-- Detecting statistical outliers
-- Value-based anomaly detection
-
-### Enhanced Detection (PyOD + Soft Algebra)
-
-Combine both approaches for maximum coverage:
-
-```python
-from mobiu_q.detection import MobiuADEnhanced
-
-# Requires: pip install pyod
-detector = MobiuADEnhanced(base_detector="IForest")
-results = detector.detect_batch(data)
-```
+| Type | Streaming | Batch |
+| Detects | Behavioral changes | Statistical outliers |
+| Real-time | ✅ Yes | ❌ No |
+| Early warning | ✅ Yes | ❌ No |
+| Pattern changes | ✅ Excellent | ⚠️ Limited |
+| Value outliers | ⚠️ Good | ✅ Excellent |
 
 ---
 
@@ -1212,74 +1183,44 @@ results = detector.detect_batch(data)
 
 ### Soft Algebra
 
-Both optimizer and attention use the nilpotent property ε²=0:
-
 ```
-SoftNumber multiplication: (a,b) × (c,d) = (ad + bc, bd)
+SoftNumber multiplication:  (a,b) × (c,d) = (ad + bc, bd)
 ```
 
-This enables tracking both "potential" and "realized" components.
+The nilpotent property ε²=0 separates "potential" (what could happen) from "realized" (what did happen). Applied to optimization:
 
-### In Optimization
-
-```python
-lr_t = base_lr × (1 + soft_component)
+```
+a_t = curvature / (curvature + mean_energy)   # landscape uncertainty
+b_t = improvement ∈ [-1, 1]                   # actual progress
+trust = |real| / (|real| + |soft| + ε)        # confidence in update
+lr_t  = base_lr × (1 + trust × soft_factor)   # adaptive scaling
 ```
 
-Soft Algebra adapts learning rate based on loss landscape curvature.
-
-### In Attention
-
-```python
-S(t) = γ·S(t-1) + k_t ⊗ v_t  # O(N) state update
-```
-
-Instead of O(N²) pairwise attention, we track state with O(N) complexity.
-
-### In Anomaly Detection
-
-```python
-Δ† = |a_t + i·b_t|  # Super-Equation score
-```
-
-Soft Algebra tracks behavioral patterns and detects deviations.
-
-### In Signal Generation
-```python
-a_t = volatility / mean_price    # Potential: what COULD happen
-b_t = price_change               # Realized: what DID happen
-signal = √(a² + b²)              # Interaction magnitude
-```
-
-Soft Algebra detects when high potential meets significant realization.
+In quantum optimization, the realized component captures the gap between gradient direction and actual energy improvement — exactly the signal needed to handle shot noise and SPSA variance.
 
 ---
 
 ## Full Examples
-For complete working examples with benchmarking, see the `examples/` folder:
 
 ### Quantum Chemistry (VQE)
 | File | Description |
 |------|-------------|
-| `test_fakefez_h2_customer.py` | H₂ molecule on FakeFez |
-| `test_lih_customer.py` | LiH molecule |
-| `test_h2o_customer.py` | H₂O molecule |
-| `test_beh2_customer.py` | BeH₂ molecule |
-| `test_h4_customer.py` | H₄ chain |
+| `vqe_fakefez_ibm_customer_adam.py` | H₂ on IBM FakeFez |
 | `test_heh_customer.py` | HeH⁺ molecule |
+| `test_h4_customer.py` | H₄ chain |
+| `test_h2o_customer.py` | H₂O molecule |
+| `test_lih_customer.py` | LiH molecule |
+| `test_beh2_customer.py` | BeH₂ molecule |
+| `vqe_c13cl2_fakefez_customer.py` | C₁₃Cl₂ Half-Möbius |
 
 ### Condensed Matter Physics
 | File | Description |
 |------|-------------|
-| `test_heisenberg_xxz.py` | Heisenberg XXZ model |
-| `test_transverse_ising.py` | Transverse field Ising model |
+| `test_heisenbeg_xxz_deep.py` | Heisenberg XXZ (Δ=2.0) |
+| `test_transverse_ising.py` | Transverse field Ising |
 | `test_xy_model.py` | XY model |
-| `test_ferro_ising.py` | Ferromagnetic Ising |
+| `test_ferro_ising_fair.py` | Ferromagnetic Ising |
 | `test_antiferro_heisenberg.py` | Antiferromagnetic Heisenberg |
-
-### Advanced Quantum
-| File | Description |
-|------|-------------|
 | `test_hubbard_dimer.py` | Hubbard dimer |
 | `test_ssh_model.py` | SSH model (topological) |
 | `test_kitaev_chain.py` | Kitaev chain |
@@ -1290,49 +1231,43 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | `test_fakefez_qaoa_new.py` | MaxCut on FakeFez |
 | `test_fakefez_qaoa_mis_new.py` | Max Independent Set on FakeFez |
 
-### Classical Optimization
-| File | Description |
-|------|-------------|
-| `test_sphere.py` | Sphere function |
-| `test_ackley.py` | Ackley function |
-| `test_beale.py` | Beale function |
-| `test_rosenbrok.py` | Rosenbrock function |
-
-### Finance
-| File | Description |
-|------|-------------|
-| `test_portfolio.py` | Portfolio optimization |
-| `test_credit_risk.py` | Credit risk assessment |
-| `test_option_pricing.py` | Option pricing |
-| `crypto_trading_customer.py` | Crypto trading with regime switching |
-
 ### Reinforcement Learning
 | File | Description |
 |------|-------------|
-| `test_lunarlander_customer.py` | LunarLander with REINFORCE |
-| `test_mujoco_customer.py` | MuJoCo continuous control |
-| `ppo_mobiu_test_customer.py` | PPO from scratch |
-| `atari_breakout_customer.py` | Atari Breakout |
-| `rl_trading_customer.py` | RL Trading with MobiuSignal |
+| `ppo_lunarlander.py` | PPO from scratch, 30 seeds |
+| `sb3_customer.py` | SB3 PPO with MobiuCallback |
+| `test_portfolio_ppo.py` | PPO portfolio trading |
+| `test_mujoco_customer.py` | MuJoCo InvertedPendulum + Hopper |
+| `atari_breakout_customer.py` | Atari Breakout DQN |
+| `crypto_dqn_sb3.py` | Crypto trading DQN + SB3 |
 
-### Machine Learning Benchmarks
+### Machine Learning
 | File | Description |
 |------|-------------|
-| `test_federated_customer.py` | Federated learning |
-| `test_noisy_labels_customer.py` | Noisy labels |
+| `test_federated_customer.py` | Federated learning (non-IID) |
+| `test_noisy_labels_customer.py` | Systematic label noise |
 | `test_sim_to_real_customer.py` | Sim-to-real transfer |
-| `test_imbalanced_customer.py` | Imbalanced classification |
+| `test_imbalanced_customer.py` | 90% class imbalance |
+| `test_llm_finetuning_v3.py` | LoRA + Full fine-tuning |
+
+### Black-box & Signal Processing
+| File | Description |
+|------|-------------|
+| `test_sphere.py` | Sphere (shot noise) |
+| `test_ackley.py` | Ackley (shot noise) |
+| `test_beale.py` | Beale (shot noise) |
+| `test_rosenbrok.py` | Rosenbrock (shot noise) |
+| `blackbox_spsa_customer.py` | Rastrigin + SPSA |
+| `antenna_customer.py` | 5G antenna beamforming |
+| `periodic_benchmark.py` | Noisy periodic landscape |
 
 ### Utilities & Demos
 | File | Description |
 |------|-------------|
-| `double_mobiu_customer.py` | Fair A/B: Soft Algebra ON vs OFF |
-| `ad_test_trainguard.py` | TrainGuard monitoring demo |
-| `ad_poc_demo.py` | Anomaly detection POC |
-| `benchmark_behavioral_customer.py` | Behavioral anomaly detection |
+| `double_mobiu_customer.py` | MobiuAttention + MobiuOptimizer |
+| `nilpotency_ablation.py` | Real SA vs Fake SA ablation |
+| `benchmark_behavioral_customer.py` | MobiuAD behavioral detection |
 | `example_signal_customer.py` | MobiuSignal demo |
-| `blackbox_spsa_customer.py` | Blackbox SPSA optimization |
-| `antenna_customer.py` | Antenna design optimization |
 
 ---
 
@@ -1343,7 +1278,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 | Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
 | Pro | Unlimited | $19/month | [Get one](https://app.mobiu.ai) |
 
-**Note:** MobiuAttention & MobiuSignal run locally, no API calls required.
+**Note:** MobiuAttention & MobiuSignal run locally — no API calls required.
 
 ---
 
@@ -1351,6 +1286,7 @@ For complete working examples with benchmarking, see the `examples/` folder:
 
 - [PyPI](https://pypi.org/project/mobiu-q/)
 - [GitHub](https://github.com/mobiuai/mobiu-q/)
+- [Website](https://mobiu.ai)
 
 ---
 

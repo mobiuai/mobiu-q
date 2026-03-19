@@ -61,4 +61,4 @@ __all__ = [
     "backtest_signal",
 ]
 
-__version__ = "4.4.2"
+__version__ = "4.4.3"

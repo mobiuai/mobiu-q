@@ -85,6 +85,7 @@ print("=" * 70)
 
 print("\n🔧 Setting up FakeFez backend...")
 backend = AerSimulator.from_backend(FakeBackend())
+backend.set_options(seed_simulator=42)
 pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
 n_params = 2 * P  # 10 params → full_sync mode
 

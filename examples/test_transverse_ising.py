@@ -4,10 +4,8 @@
 🧬 VQE Transverse Ising - CUSTOMER VIEW TEST
 ================================================================================
 This test shows what a CUSTOMER would experience:
-- Baseline: Pure SPSA optimizer (what customer has BEFORE Mobiu-Q)
-- Test: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
-
-NOT using use_soft_algebra flag - testing real customer integration!
+- Baseline: Pure Adam optimizer (what customer has BEFORE Mobiu-Q)
+- Test: Adam + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
 
 Transverse Ising chain:
 - 6 qubits (spins)
@@ -38,6 +36,7 @@ except ImportError:
         from qiskit.providers.fake_provider import GenericBackendV2
         FakeBackend = lambda: GenericBackendV2(num_qubits=127)
 
+import torch
 from mobiu_q import MobiuQCore
 
 # ============================================================
@@ -49,8 +48,8 @@ NUM_STEPS = 150
 NUM_SEEDS = 5
 NUM_SHOTS = 4096
 C_SHIFT = 0.1
-LR = 0.2
-METHOD = "deep"
+LR = 0.02   # standard + hardware default
+METHOD = "standard"
 N_QUBITS = 6
 H_FIELD = 1.0  # Transverse field strength
 
@@ -62,6 +61,7 @@ print("Setting up FakeFez backend...")
 backend = AerSimulator.from_backend(FakeBackend())
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
+estimator.options.seed_simulator = 42
 
 # Transverse Ising Hamiltonian (6 qubits)
 ops = []
@@ -106,6 +106,18 @@ def get_batched_energy_and_gradient(params, delta):
     return e_current, grad
 
 
+class PureAdam:
+    """PyTorch Adam — same LR as Mobiu hardware default."""
+    def __init__(self, params_np, lr=0.02):
+        self._tensor = torch.tensor(params_np, dtype=torch.float64, requires_grad=True)
+        self._opt    = torch.optim.Adam([self._tensor], lr=lr)
+
+    def step(self, params_np, grad_np):
+        self._opt.zero_grad()
+        self._tensor.grad = torch.tensor(grad_np, dtype=torch.float64)
+        self._opt.step()
+        return self._tensor.detach().numpy().copy()
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -118,102 +130,103 @@ def main():
     print(f"Steps: {NUM_STEPS} | Seeds: {NUM_SEEDS} | Shots: {NUM_SHOTS}")
     print()
     print("This test shows what a CUSTOMER would experience:")
-    print("  • Baseline: Pure SPSA optimization (NO Mobiu)")
-    print("  • Test: SPSA + Mobiu-Q enhancement")
+    print("  • Baseline: Pure Adam optimizer (NO Mobiu)")
+    print("  • Test: Adam + Mobiu-Q enhancement")
     print("=" * 70)
     
-    spsa_results = []
+    adam_results = []
     mobiu_results = []
     
     for seed in range(NUM_SEEDS):
         print(f"\n  Seed {seed + 1}/{NUM_SEEDS}")
         
-        # Initialize
+        # Initialize — same params for both
         np.random.seed(seed)
         init_params = np.random.uniform(-np.pi, np.pi, num_params)
-        
-        # Pre-generate SPSA deltas for fairness
+
+        # Pre-generate SPSA deltas — identical for Adam and Mobiu (fair comparison)
         np.random.seed(seed * 1000)
         spsa_deltas = [np.random.choice([-1, 1], size=num_params) for _ in range(NUM_STEPS)]
-        
-        # ─────────────────────────────────────────────────────────────────
-        # BASELINE: Pure SPSA (what customer has BEFORE adding Mobiu-Q)
-        # ─────────────────────────────────────────────────────────────────
-        params = init_params.copy()
-        spsa_best = float('inf')
-        
+
+        # ── Baseline: Pure Adam ───────────────────────────────────────────
+        print("    Running Pure Adam...", end="", flush=True)
+        params   = init_params.copy()
+        opt      = PureAdam(params, lr=LR)
+        adam_best = float('inf')
+
         for step in range(NUM_STEPS):
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
-            spsa_best = min(spsa_best, energy)
-            
-            # Pure SPSA update
-            params = params - LR * grad
-        
-        # ─────────────────────────────────────────────────────────────────
-        # MOBIU-Q: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
-        # ─────────────────────────────────────────────────────────────────
-        params = init_params.copy()
+            adam_best = min(adam_best, energy)
+            params    = opt.step(params, grad)
+            if step % 50 == 0:
+                print(f"\r    Adam step {step:3d}/{NUM_STEPS} | Best: {adam_best:.4f}", end="")
+        print()
+
+        # ── Test: Adam + Mobiu-Q ──────────────────────────────────────────
+        print("    Running Adam + Mobiu-Q...", end="", flush=True)
+        params    = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,
             method=METHOD,
             mode='hardware',
-            base_lr=LR,  # Set same LR as SPSA for fair comparison
+            base_lr=LR,
             verbose=False
         )
         mobiu_best = float('inf')
-        
+
         for step in range(NUM_STEPS):
             energy, grad = get_batched_energy_and_gradient(params, spsa_deltas[step])
             mobiu_best = min(mobiu_best, energy)
-            params = mobiu_opt.step(params, grad, energy)
-        
+            params     = mobiu_opt.step(params, grad, energy)
+            if step % 50 == 0:
+                print(f"\r    Mobiu step {step:3d}/{NUM_STEPS} | Best: {mobiu_best:.4f}", end="")
+        print()
         mobiu_opt.end()
-        
-        # Compare
-        spsa_gap = abs(spsa_best - EXACT_ENERGY)
+
+        # ── Compare ───────────────────────────────────────────────────────
+        adam_gap  = abs(adam_best  - EXACT_ENERGY)
         mobiu_gap = abs(mobiu_best - EXACT_ENERGY)
-        winner = "✅ Mobiu wins" if mobiu_gap < spsa_gap else "❌ SPSA wins"
-        
-        print(f"    Pure SPSA: {spsa_best:.4f} (gap={spsa_gap:.4f})")
-        print(f"    + Mobiu-Q: {mobiu_best:.4f} (gap={mobiu_gap:.4f}) → {winner}")
-        
-        spsa_results.append(spsa_best)
+        winner    = "✅ Mobiu" if mobiu_gap < adam_gap else "❌ Adam"
+        print(f"    Pure Adam: {adam_best:.4f} (gap={adam_gap:.4f}) | "
+              f"+ Mobiu: {mobiu_best:.4f} (gap={mobiu_gap:.4f}) → {winner}")
+
+        adam_results.append(adam_best)
         mobiu_results.append(mobiu_best)
 
     # ============================================================
     # SUMMARY
     # ============================================================
-    spsa_arr = np.array(spsa_results)
+    adam_arr = np.array(adam_results)
     mobiu_arr = np.array(mobiu_results)
     
-    spsa_gaps = np.abs(spsa_arr - EXACT_ENERGY)
+    adam_gaps = np.abs(adam_arr - EXACT_ENERGY)
     mobiu_gaps = np.abs(mobiu_arr - EXACT_ENERGY)
     
-    spsa_mean_gap = np.mean(spsa_gaps)
+    adam_mean_gap = np.mean(adam_gaps)
     mobiu_mean_gap = np.mean(mobiu_gaps)
     
-    improvement = (spsa_mean_gap - mobiu_mean_gap) / spsa_mean_gap * 100
-    wins = np.sum(mobiu_gaps < spsa_gaps)
+    improvement = (adam_mean_gap - mobiu_mean_gap) / adam_mean_gap * 100
+    wins = np.sum(mobiu_gaps < adam_gaps)
     
     try:
-        stat, p_value = wilcoxon(spsa_gaps, mobiu_gaps)
+        _, p_value = wilcoxon(adam_gaps, mobiu_gaps)
     except:
         p_value = 1.0
     
     print("\n" + "=" * 70)
     print("📊 FINAL RESULTS")
     print("=" * 70)
-    print(f"Pure SPSA mean gap:    {spsa_mean_gap:.4f}")
-    print(f"SPSA + Mobiu-Q gap:    {mobiu_mean_gap:.4f}")
-    print(f"\nImprovement: {improvement:+.1f}%")
-    print(f"Win rate: {wins}/{NUM_SEEDS} ({100*wins/NUM_SEEDS:.0f}%)")
-    print(f"p-value: {p_value:.6f}")
+    print(f"  Pure Adam mean gap:   {adam_mean_gap:.4f}")
+    print(f"  Adam + Mobiu gap:     {mobiu_mean_gap:.4f}")
+    print(f"\n  📈 Improvement: {improvement:+.1f}%")
+    print(f"  🏆 Win rate: {wins}/{NUM_SEEDS} ({100*wins/NUM_SEEDS:.0f}%)")
+    print(f"  p-value: {p_value:.6f}")
     print("=" * 70)
     
-    print(f"\nEnergy values:")
-    print(f"  Pure SPSA:     {np.mean(spsa_arr):.4f} ± {np.std(spsa_arr):.4f}")
-    print(f"  SPSA + Mobiu:  {np.mean(mobiu_arr):.4f} ± {np.std(mobiu_arr):.4f}")
-    print(f"  Exact:         {EXACT_ENERGY:.4f}")
+    print(f"\n  Energy values:")
+    print(f"    Pure Adam:     {adam_arr.mean():.4f} ± {adam_arr.std():.4f} Ha")
+    print(f"    Adam + Mobiu:  {mobiu_arr.mean():.4f} ± {mobiu_arr.std():.4f} Ha")
+    print(f"    Exact:         {EXACT_ENERGY:.4f} Ha")
     
     with open('transverse_ising_customer_results.json', 'w') as f:
         json.dump({

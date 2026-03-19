@@ -46,7 +46,7 @@ C_SHIFT = 0.1
 LR = 0.1
 BOUNDS = (-5.0, 5.0)
 FUNCTION = "sphere"  # rosenbrock, sphere, ackley, beale
-METHOD = "standard"  # deep works better for rugged landscapes
+METHOD = "standard" 
 
 
 # ============================================================
@@ -181,6 +181,7 @@ def main():
         # ─────────────────────────────────────────────────────────────────
         # BASELINE: Pure SPSA (what customer has BEFORE adding Mobiu-Q)
         # ─────────────────────────────────────────────────────────────────
+        np_state = np.random.get_state()  # save shot noise state
         params = init_params.copy()
         baseline_best = float('inf')
         
@@ -209,6 +210,7 @@ def main():
         # ─────────────────────────────────────────────────────────────────
         # MOBIU-Q: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
         # ─────────────────────────────────────────────────────────────────
+        np.random.set_state(np_state)  # restore shot noise state
         params = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,

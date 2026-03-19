@@ -59,6 +59,7 @@ print("Setting up FakeFez backend...")
 backend = AerSimulator.from_backend(FakeBackend())
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
+estimator.options.seed_simulator = 42
 
 # LiH Hamiltonian (4 qubits)
 hamiltonian = SparsePauliOp.from_list([
@@ -141,6 +142,7 @@ def main():
             license_key=LICENSE_KEY,
             method=METHOD,
             mode='hardware',
+            base_lr=LR,   # same as SPSA baseline
             verbose=False
         )
         mobiu_best = float('inf')

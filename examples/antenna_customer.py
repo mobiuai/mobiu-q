@@ -173,6 +173,7 @@ def main():
         # ─────────────────────────────────────────────────────────────────
         # BASELINE: Pure SPSA (what customer has BEFORE adding Mobiu-Q)
         # ─────────────────────────────────────────────────────────────────
+        np_state = np.random.get_state()  # save shot noise RNG state
         params = init_params.copy()
         baseline_best = float('inf')
         
@@ -201,6 +202,7 @@ def main():
         # ─────────────────────────────────────────────────────────────────
         # MOBIU-Q: SPSA + Mobiu-Q (what customer has AFTER adding Mobiu-Q)
         # ─────────────────────────────────────────────────────────────────
+        np.random.set_state(np_state)  # restore shot noise RNG state
         params = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,
