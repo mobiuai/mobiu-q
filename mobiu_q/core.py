@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.4.4 - Frustration Engine for Quantum
+Version: 4.4.5 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -147,6 +147,7 @@ class UniversalFrustrationEngine:
     Works entirely client-side for zero latency.
     """
     def __init__(self, base_lr: float, sensitivity: float = 0.05,
+                maximize: bool = False,
                 flip_on_fire: bool = False,
                 session_id: str = None,
                 license_key: str = None,
@@ -154,7 +155,8 @@ class UniversalFrustrationEngine:
         self.base_lr = base_lr
         self.history = deque(maxlen=50)
         self.cooldown = 0
-        self.best_metric = -float('inf')
+        self.maximize = maximize
+        self.best_metric = float('inf') if not maximize else -float('inf')
         self.stagnation_counter = 0
         self.sensitivity = sensitivity
         self.flip_on_fire = flip_on_fire
@@ -169,7 +171,9 @@ class UniversalFrustrationEngine:
         """
         self.history.append(current_metric)
         
-        if current_metric > self.best_metric:
+        improved = (current_metric > self.best_metric) if self.maximize \
+           else (current_metric < self.best_metric)
+        if improved:
             self.best_metric = current_metric
             self.stagnation_counter = 0
         else:
@@ -183,7 +187,10 @@ class UniversalFrustrationEngine:
         if len(self.history) >= 20:
             recent_avg = np.mean(list(self.history)[-10:])
             old_avg = np.mean(list(self.history)[:10])
-            is_stuck = (recent_avg < old_avg + abs(old_avg) * self.sensitivity)
+            if self.maximize:
+                is_stuck = (recent_avg < old_avg + abs(old_avg) * self.sensitivity)
+            else:
+                is_stuck = (recent_avg > old_avg - abs(old_avg) * self.sensitivity)
             
             if is_stuck and self.stagnation_counter > 20:
                 self.cooldown = 30
@@ -201,10 +208,9 @@ class UniversalFrustrationEngine:
         return 1.0
     
     def reset(self):
-        """Reset engine state for new run."""
         self.history.clear()
         self.cooldown = 0
-        self.best_metric = -float('inf')
+        self.best_metric = float('inf') if not self.maximize else -float('inf')
         self.stagnation_counter = 0
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -545,7 +551,7 @@ class _MobiuPyTorchBackend:
         # Frustration Engine (not needed in full_sync — server handles SA)
         self.maximize = maximize
         self.frustration_engine = (
-            UniversalFrustrationEngine(base_lr=self.base_lr)
+            UniversalFrustrationEngine(base_lr=self.base_lr, maximize=self.maximize)
             if use_soft_algebra and not full_sync
             else None
         )
@@ -707,10 +713,7 @@ class _MobiuPyTorchBackend:
         # 1. FRUSTRATION ENGINE (Client-Side Logic)
         if self.frustration_engine and metric is not None:
             # Engine always wants "Higher is Better" for its internal logic
-            score = metric if self.maximize else -metric
-            
-            # Get Boost Factor (1.0, 2.0, or 3.0)
-            factor = self.frustration_engine.get_lr_factor(score)
+            factor = self.frustration_engine.get_lr_factor(metric)
             
             # If Engine detects stagnation, apply boost immediately
             if factor > 1.0:
@@ -1031,9 +1034,8 @@ class MobiuQCore:
         self.api_endpoint = API_ENDPOINT
 
         # Frustration Engine (NEW)
-        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
-        self._current_lr = self.base_lr
-        self.maximize = maximize
+        self.maximize = maximize   # ← קודם
+        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr, maximize=self.maximize) if use_soft_algebra else None
         
         # Local state (for offline fallback)
         self._offline_mode = False
@@ -1244,8 +1246,7 @@ class MobiuQCore:
 
         # === FRUSTRATION ENGINE ===
         if self.frustration_engine:
-            score = energy if self.maximize else -energy
-            factor = self.frustration_engine.get_lr_factor(score)
+            factor = self.frustration_engine.get_lr_factor(energy)
     
             if factor > 1.0:
                 self._current_lr = self.base_lr * factor
@@ -1584,7 +1585,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.4.4"
+__version__ = "4.4.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

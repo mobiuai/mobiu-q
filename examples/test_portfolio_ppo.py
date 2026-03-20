@@ -94,7 +94,7 @@ def train_ppo(policy, env, use_mobiu=False):
     base_opt = optim.Adam(policy.parameters(), lr=BASE_LR)
     if use_mobiu:
         # Maximize=True is intentional: aggressive LR boost aids PPO exploration
-        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, maximize=True, verbose=False)
+        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, base_lr=BASE_LR, maximize=False, verbose=False)
     else:
         optimizer = base_opt
     
