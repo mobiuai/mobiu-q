@@ -1,4 +1,4 @@
-# Mobiu-Q v4.4.3
+# Mobiu-Q v4.4.4
 
 **Soft Algebra for Optimization & Attention**
 
@@ -1239,7 +1239,8 @@ In quantum optimization, the realized component captures the gap between gradien
 | `test_portfolio_ppo.py` | PPO portfolio trading |
 | `test_mujoco_customer.py` | MuJoCo InvertedPendulum + Hopper |
 | `atari_breakout_customer.py` | Atari Breakout DQN |
-| `crypto_dqn_sb3.py` | Crypto trading DQN + SB3 |
+| `crypto_trading_fair.py` | Crypto Trading PPO — BTC-like synthetic, regime switching |
+| `crypto_trading_realdata.py` | Crypto Trading PPO — BTC-USD real daily data |
 
 ### Machine Learning
 | File | Description |
