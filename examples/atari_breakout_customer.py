@@ -101,7 +101,7 @@ def train_atari(use_mobiu, num_episodes, seed, init_weights, verbose=True):
     base_opt = optim.Adam(policy_net.parameters(), lr=1e-4)
     if use_mobiu:
         # Maximize=True is intentional: aggressive LR boost aids PPO exploration
-        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, base_lr=1e-4, maximize=False, sync_interval=50, verbose=False)
+        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, base_lr=1e-4, maximize=True, sync_interval=50, verbose=False)
     else:
         optimizer = base_opt
     

@@ -83,7 +83,7 @@ def train_ppo(env_name, seed, init_weights, use_mobiu=False):
         optimizer = MobiuOptimizer(
             base_opt, license_key=LICENSE_KEY, method=METHOD,
             # Maximize=True is intentional: aggressive LR boost aids PPO exploration 
-            base_lr=BASE_LR, maximize=False, sync_interval=50, verbose=False
+            base_lr=BASE_LR, maximize=True, sync_interval=50, verbose=False
         )
     else:
         optimizer = base_opt
