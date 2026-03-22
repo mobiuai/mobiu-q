@@ -150,8 +150,8 @@ def train_ppo(seed, optimizer_name="adam"):
         optimizer = MobiuOptimizer(
             base_adam,
             license_key=LICENSE_KEY,
+            boost="aggressive",
             method="adaptive", # Best for RL variance
-            maximize=False,    # <--- CRITICAL FIX: We are minimizing the PPO surrogate Loss!
             verbose=False
         )
         use_mobiu = True

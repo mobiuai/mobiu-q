@@ -93,8 +93,7 @@ class ActorCritic(nn.Module):
 def train_ppo(policy, env, use_mobiu=False):
     base_opt = optim.Adam(policy.parameters(), lr=BASE_LR)
     if use_mobiu:
-        # Maximize=True is intentional: aggressive LR boost aids PPO exploration
-        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, base_lr=BASE_LR, maximize=True, verbose=False)
+        optimizer = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method=METHOD, boost="normal", update_interval=1, base_lr=BASE_LR, verbose=False)
     else:
         optimizer = base_opt
     

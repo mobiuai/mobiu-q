@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.4.6 - Frustration Engine for Quantum
+Version: 4.5 - Frustration Engine for Quantum
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -141,77 +141,163 @@ def get_default_lr(method: str, mode: str) -> float:
 # UNIVERSAL FRUSTRATION ENGINE (CLIENT-SIDE)
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# Boost presets
+BOOST_PRESETS = {
+    "none":       {"warmup_factor": 1.0, "boost_factor": 1.0, "check_after": 999,
+                   "stagnation_window": 20, "stagnation_threshold": 0.02, "cooldown": 30},
+    "normal":     {"warmup_factor": 1.5, "boost_factor": 1.5, "check_after": 8,
+                   "stagnation_window": 20, "stagnation_threshold": 0.02, "cooldown": 30},
+    "aggressive": {"warmup_factor": 3.0, "boost_factor": 3.0, "check_after": 3,
+                   "stagnation_window": 15, "stagnation_threshold": 0.01, "cooldown": 20},
+}
+
 class UniversalFrustrationEngine:
     """
-    Logic Injection Engine that detects stagnation and boosts Learning Rate.
-    Works entirely client-side for zero latency.
+    LR Boost Engine — warmup at start + stagnation boost during training.
+
+    Controlled by the 'boost' parameter:
+        "none"       — no warmup, no stagnation boost (default)
+        "normal"     — gentle warmup + gentle stagnation boost
+        "aggressive" — strong warmup + strong stagnation boost
+
+    _is_improving() acts as a smart brake:
+        - Ends warmup early if training is already going well
+        - Skips stagnation boost if training is still improving
+
+    Always prints what it's doing (when verbose=True).
     """
-    def __init__(self, base_lr: float, sensitivity: float = 0.05,
-                maximize: bool = False,
-                flip_on_fire: bool = False,
-                session_id: str = None,
-                license_key: str = None,
-                api_endpoint: str = None):
-        self.base_lr = base_lr
-        self.history = deque(maxlen=50)
-        self.cooldown = 0
-        self.maximize = maximize
-        self.best_metric = float('inf') if not maximize else -float('inf')
-        self.stagnation_counter = 0
-        self.sensitivity = sensitivity
-        self.flip_on_fire = flip_on_fire
-        self.session_id   = session_id
-        self.license_key  = license_key
-        self.api_endpoint = api_endpoint
+    def __init__(self, base_lr: float,
+                 boost: str = "none",
+                 verbose: bool = True,
+                 warmup_steps: int = 30,
+                 update_interval: int = 320,
+                 # Legacy params
+                 sensitivity: float = 0.05,
+                 flip_on_fire: bool = False,
+                 session_id: str = None,
+                 license_key: str = None,
+                 api_endpoint: str = None):
+        preset = BOOST_PRESETS.get(boost, BOOST_PRESETS["none"])
+        self.base_lr              = base_lr
+        self.boost                = boost
+        self.verbose              = verbose
+        self.warmup_factor        = preset["warmup_factor"]
+        self.boost_factor         = preset["boost_factor"]
+        self.check_after          = preset["check_after"]
+        self.stagnation_window    = preset["stagnation_window"]
+        self.stagnation_threshold = preset["stagnation_threshold"]
+        self.cooldown_steps       = preset["cooldown"]
+        self.warmup_steps         = warmup_steps
+        self.update_interval      = update_interval
+        self._call_count          = 0
+        self._update_count        = 0
+        self._metric_history      = []
+        self._warmup_active       = None   # None=undecided, True=active, False=done
+        self._cooldown            = 0
+        self._current_factor      = 1.0
+        self.fire_count           = 0
+        self._warmup_attempts     = 0
+        self._warmup_cancelled    = 0
+        self._stagnation_attempts = 0
+        # Legacy
+        self.flip_on_fire  = flip_on_fire
+        self.session_id    = session_id
+        self.license_key   = license_key
+        self.api_endpoint  = api_endpoint
 
-    def get_lr_factor(self, current_metric: float) -> float:
-        """
-        Returns a multiplier factor (e.g. 1.0, 2.0, 3.0) for the LR.
-        Assumes 'current_metric' is something we want to MAXIMIZE.
-        """
-        self.history.append(current_metric)
-        
-        improved = (current_metric > self.best_metric) if self.maximize \
-           else (current_metric < self.best_metric)
-        if improved:
-            self.best_metric = current_metric
-            self.stagnation_counter = 0
-        else:
-            self.stagnation_counter += 1
+    def _is_improving(self, window: int = None) -> bool:
+        """Returns True if metric improved meaningfully over the given window."""
+        w = window or self.stagnation_window
+        history = self._metric_history[-w:] if len(self._metric_history) >= w \
+                  else self._metric_history
+        if len(history) < 2:
+            return False
+        first, last = history[0], history[-1]
+        if abs(first) < 1e-8:
+            return last < first
+        return (first - last) / abs(first) > self.stagnation_threshold
 
-        if self.cooldown > 0:
-            self.cooldown -= 1
-            decay = 0.95 ** (30 - self.cooldown)
-            return 1.0 + (2.0 * decay)
+    def get_lr_factor(self, current_metric: float = 0.0) -> float:
+        self._call_count += 1
 
-        if len(self.history) >= 20:
-            recent_avg = np.mean(list(self.history)[-10:])
-            old_avg = np.mean(list(self.history)[:10])
-            if self.maximize:
-                is_stuck = (recent_avg < old_avg + abs(old_avg) * self.sensitivity)
+        # Between update boundaries: return current factor
+        if self._call_count % self.update_interval != 0:
+            return self._current_factor
+
+        # At update boundary
+        self._update_count += 1
+        self._metric_history.append(current_metric)
+
+        # ── BOOST=NONE: do nothing ──
+        if self.boost == "none":
+            self._current_factor = 1.0
+            return 1.0
+
+        # ── PHASE 1: WARMUP ──
+        if self._warmup_active is None:
+            self._warmup_active = True
+            self._warmup_attempts += 1
+
+        if self._warmup_active:
+            warmup_update = self._update_count
+            if self._update_count >= self.check_after and \
+               self._is_improving(window=self.check_after):
+                self._warmup_active = False
+                self._warmup_cancelled += 1
+                self._current_factor = 1.0
+                return 1.0
+            if warmup_update <= self.warmup_steps:
+                progress = (warmup_update - 1) / self.warmup_steps
+                factor = self.warmup_factor - (self.warmup_factor - 1.0) * progress
+                self._current_factor = max(factor, 1.0)
+                return self._current_factor
             else:
-                is_stuck = (recent_avg > old_avg - abs(old_avg) * self.sensitivity)
-            
-            if is_stuck and self.stagnation_counter > 20:
-                self.cooldown = 30
-                self.stagnation_counter = 0
-                if self.flip_on_fire and self.session_id:
-                    try:
-                        requests.post(self.api_endpoint, json={
-                            'action': 'flip',
-                            'license_key': self.license_key,
-                            'session_id': self.session_id
-                        }, timeout=1.0)
-                    except: pass
-                return 3.0
+                self._warmup_active = False
+                self._current_factor = 1.0
 
+        # ── PHASE 2: STAGNATION BOOST ──
+        if self._cooldown > 0:
+            self._cooldown -= 1
+            self._current_factor = 1.0
+            return 1.0
+
+        if len(self._metric_history) >= self.stagnation_window:
+            if not self._is_improving():
+                self._cooldown = self.cooldown_steps
+                self.fire_count += 1
+                self._stagnation_attempts += 1
+                self._current_factor = self.boost_factor
+                return self._current_factor
+
+        self._current_factor = 1.0
         return 1.0
-    
+
+    def summary(self) -> str:
+        """Returns a one-line summary of boost activity."""
+        if self.boost == "none":
+            return ""
+        parts = []
+        if self._warmup_attempts > 0:
+            cancelled = f", {self._warmup_cancelled} cancelled" if self._warmup_cancelled else ""
+            parts.append(f"warmup: {self._warmup_attempts} attempt{cancelled}")
+        if self._stagnation_attempts > 0:
+            parts.append(f"stagnation spikes: {self._stagnation_attempts}")
+        if not parts:
+            return f"   💡 Boost ({self.boost}): no action needed — training improved on its own"
+        return f"   ⚡ Boost ({self.boost}): {' | '.join(parts)}"
+
     def reset(self):
-        self.history.clear()
-        self.cooldown = 0
-        self.best_metric = float('inf') if not self.maximize else -float('inf')
-        self.stagnation_counter = 0
+        """Reset engine state for new run."""
+        self._call_count          = 0
+        self._update_count        = 0
+        self._metric_history      = []
+        self._warmup_active       = None
+        self._cooldown            = 0
+        self._current_factor      = 1.0
+        self.fire_count           = 0
+        self._warmup_attempts     = 0
+        self._warmup_cancelled    = 0
+        self._stagnation_attempts = 0
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MOBIU OPTIMIZER - UNIVERSAL WRAPPER (NEW in v2.7!)
@@ -279,10 +365,11 @@ class MobiuOptimizer:
         optimizer_or_params,
         license_key: Optional[str] = None,
         method: str = "adaptive",
-        mode: str = "simulation",  # להוסיף!
+        mode: str = "simulation",
         use_soft_algebra: bool = True,
         sync_interval: Optional[int] = None,
-        maximize: bool = False,
+        boost: str = "none",
+        update_interval: int = 320,
         verbose: bool = True,
         problem: Optional[str] = None,
         **kwargs
@@ -338,7 +425,8 @@ class MobiuOptimizer:
                 base_lr=kwargs.get('base_lr'),
                 use_soft_algebra=use_soft_algebra,
                 sync_interval=sync_interval,
-                maximize=maximize,
+                boost=boost,
+                update_interval=update_interval,
                 verbose=verbose,
                 full_sync=full_sync,
                 mode=mode or 'simulation'
@@ -525,7 +613,9 @@ class _MobiuPyTorchBackend:
     def __init__(self, optimizer, license_key: str, method: str, 
                 base_lr: Optional[float] = None,
                 use_soft_algebra: bool = True, sync_interval: int = 50,
-                maximize: bool = False, verbose: bool = True,
+                boost: str = "none",
+                update_interval: int = 320,
+                verbose: bool = True,
                 full_sync: bool = False, mode: str = 'simulation'):
         self.optimizer = optimizer
         self.license_key = license_key
@@ -549,9 +639,8 @@ class _MobiuPyTorchBackend:
                 self.base_lr = optimizer_lr
         
         # Frustration Engine (not needed in full_sync — server handles SA)
-        self.maximize = maximize
         self.frustration_engine = (
-            UniversalFrustrationEngine(base_lr=self.base_lr, maximize=self.maximize)
+            UniversalFrustrationEngine(base_lr=self.base_lr, boost=boost)
             if use_soft_algebra and not full_sync
             else None
         )
@@ -582,8 +671,7 @@ class _MobiuPyTorchBackend:
                 'mode': self.mode,
                 'base_lr': self.base_lr,
                 'base_optimizer': 'Adam',
-                'use_soft_algebra': self.use_soft_algebra,
-                'maximize': self.maximize
+                'use_soft_algebra': self.use_soft_algebra
             }, timeout=10)
             
             data = r.json()
@@ -634,9 +722,6 @@ class _MobiuPyTorchBackend:
         self._stored_metric = metric
 
     def step(self, metric: float = None):
-        """
-        metric: The Loss (minimize) or Reward (maximize).
-        """
         # Use stored metric if none provided (for SB3 compatibility)
         if metric is None:
             metric = self._stored_metric
@@ -712,7 +797,6 @@ class _MobiuPyTorchBackend:
 
         # 1. FRUSTRATION ENGINE (Client-Side Logic)
         if self.frustration_engine and metric is not None:
-            # Engine always wants "Higher is Better" for its internal logic
             factor = self.frustration_engine.get_lr_factor(metric)
             
             # If Engine detects stagnation, apply boost immediately
@@ -736,10 +820,6 @@ class _MobiuPyTorchBackend:
 
         if should_sync:
             avg_metric = self._accumulated_metric / self._metric_count
-            
-            # --- FIX: Direction Correction ---
-            # Cloud assumes Physics/Energy (Lower = Better).
-            # If we are Maximizing (Reward/Sharpe), we flip sign so Cloud sees "Energy dropping".
             energy_to_send = avg_metric
             
             try:
@@ -901,6 +981,11 @@ class _MobiuPyTorchBackend:
                         print(f"⚠️  Low quota warning: {remaining} runs remaining")
                     else:
                         print(f"✅ Session ended ({remaining} runs remaining)")
+
+                    if self.frustration_engine:
+                        summary = self.frustration_engine.summary()
+                        if summary:
+                            print(summary)
                     
             except Exception as e:
                 if self.verbose:
@@ -977,7 +1062,6 @@ class MobiuQCore:
         base_lr: Optional[float] = None,
         base_optimizer: str = DEFAULT_OPTIMIZER,
         use_soft_algebra: bool = True,
-        maximize: bool = False,  # NEW
         offline_fallback: bool = True,
         verbose: bool = True,
         problem: Optional[str] = None,
@@ -1034,8 +1118,8 @@ class MobiuQCore:
         self.api_endpoint = API_ENDPOINT
 
         # Frustration Engine (NEW)
-        self.maximize = maximize   # ← קודם
-        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr, maximize=self.maximize) if use_soft_algebra else None
+        self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
+        self._current_lr = self.base_lr
         
         # Local state (for offline fallback)
         self._offline_mode = False
@@ -1081,8 +1165,7 @@ class MobiuQCore:
                     "mode": self.mode,
                     "base_lr": self.base_lr,
                     "base_optimizer": self.base_optimizer,
-                    "use_soft_algebra": self.use_soft_algebra,
-                    "maximize": self.maximize  # <-- להוסיף!
+                    "use_soft_algebra": self.use_soft_algebra
                 },
                 timeout=10
             )
@@ -1120,9 +1203,6 @@ class MobiuQCore:
                 if not self.use_soft_algebra:
                     mode_str += ", SA=off"
 
-                if self.maximize:
-                    mode_str += ", maximize=True"
-                
                 if remaining == 'unlimited':
                     print(f"🚀 Mobiu-Q session started (Pro tier) [{mode_str}]")
                 elif isinstance(remaining, int):
@@ -1585,7 +1665,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.4.6"
+__version__ = "4.5"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

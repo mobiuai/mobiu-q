@@ -62,8 +62,8 @@ class MobiuCallback(BaseCallback):
             base_opt,
             license_key=LICENSE_KEY,
             method="adaptive",
+            boost="normal",
             use_soft_algebra=True,
-            maximize=True,
             sync_interval=50,
             verbose=False
         )

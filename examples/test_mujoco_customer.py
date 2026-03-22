@@ -36,6 +36,13 @@ TOTAL_TIMESTEPS = 50_000
 STEPS_PER_UPDATE = 2048
 BASE_LR = 3e-4
 
+# ── Boost config per environment ──────────────────────────────────────────────
+# Options: "none" | "normal" | "aggressive"
+BOOST_CONFIG = {
+    "InvertedPendulum-v5": "aggressive",
+    "Hopper-v5":           "aggressive",
+}
+
 class ActorCritic(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden=64):
         super().__init__()
@@ -82,8 +89,8 @@ def train_ppo(env_name, seed, init_weights, use_mobiu=False):
     if use_mobiu:
         optimizer = MobiuOptimizer(
             base_opt, license_key=LICENSE_KEY, method=METHOD,
-            # Maximize=True is intentional: aggressive LR boost aids PPO exploration 
-            base_lr=BASE_LR, maximize=True, sync_interval=50, verbose=False
+            boost=BOOST_CONFIG.get(env_name, "none"),
+            base_lr=BASE_LR, sync_interval=50, verbose=False
         )
     else:
         optimizer = base_opt

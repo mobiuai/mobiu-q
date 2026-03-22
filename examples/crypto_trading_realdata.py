@@ -132,7 +132,7 @@ def train_ppo(policy, env, use_mobiu=False):
             license_key=LICENSE_KEY,
             method=METHOD,
             base_lr=BASE_LR,
-            maximize=False,
+            update_interval=1,
             verbose=False
         )
     else:

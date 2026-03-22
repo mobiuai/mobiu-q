@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mobiu-q"
-version = "4.4.6"
+version = "4.5"
 description = "Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection"
 readme = "README.md"
 license = {text = "Proprietary"}
@@ -85,5 +85,5 @@ where = ["."]
 include = ["mobiu_q*"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["examples"]
 python_files = ["test_*.py"]

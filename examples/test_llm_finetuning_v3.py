@@ -375,7 +375,6 @@ def run_lora_finetune(seed, use_mobiu=False):
             license_key=LICENSE_KEY,
             method='adaptive',
             use_soft_algebra=True,
-            maximize=False,  # Minimizing loss
             sync_interval=50,
             verbose=False
         )
@@ -436,7 +435,6 @@ def run_full_finetune(seed, use_mobiu=False):
             license_key=LICENSE_KEY,
             method='adaptive',
             use_soft_algebra=True,
-            maximize=False,
             sync_interval=50,
             verbose=False
         )

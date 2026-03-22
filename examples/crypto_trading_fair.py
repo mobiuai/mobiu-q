@@ -107,8 +107,9 @@ def train_ppo(policy, env, use_mobiu=False):
             base_opt,
             license_key=LICENSE_KEY,
             method=METHOD,
-            base_lr=BASE_LR,           # ← חובה לפי README
-            maximize=False,            # ← FIXED: PPO minimizes surrogate loss
+            base_lr=BASE_LR,
+            boost="aggressive",
+            update_interval=1,
             verbose=False
         )
     else:

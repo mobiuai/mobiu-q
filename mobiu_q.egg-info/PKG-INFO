@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 4.4.6
+Version: 4.5
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v4.4.6
+# Mobiu-Q v4.5
 
 **Soft Algebra for Optimization & Attention**
 
@@ -91,6 +91,7 @@ opt = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",   # standard | deep | adaptive
     base_lr=3e-4,        # always pass base_lr to match your optimizer's LR
+    boost="none",        # "none" (default) | "normal" | "aggressive"
     verbose=False
 )
 
@@ -222,26 +223,53 @@ base_opt = Muon(model.parameters(), lr=0.02, momentum=0.95)
 
 Supported server-side (Quantum/NumPy mode): `Adam`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`.
 
-### minimize vs maximize
+### LR Boost (optional)
+
+The `boost` parameter controls a client-side learning rate engine that runs alongside Soft Algebra. **Off by default (`boost="none"`).**
 
 ```python
-# Loss minimization (default) — supervised learning, VQE
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive",
-                     base_lr=3e-4, maximize=False)
-opt.step(loss.item())
+# Default — Soft Algebra only, no LR modification
+opt = MobiuOptimizer(base_opt, license_key=KEY, method="adaptive", base_lr=3e-4)
 
-# Reward maximization — RL with SB3 callback (set_metric provides reward signal)
-opt = MobiuOptimizer(base_opt, license_key=LICENSE_KEY, method="adaptive",
-                     base_lr=3e-4, maximize=True)
-# SB3: opt.set_metric(episode_reward)
+# Gentle warmup + stagnation recovery
+opt = MobiuOptimizer(base_opt, ..., boost="normal")
+
+# Strong warmup + stagnation recovery (RL, sparse reward)
+opt = MobiuOptimizer(base_opt, ..., boost="aggressive")
 ```
 
-| Use Case | maximize= | Pass to step() |
-|----------|-----------|----------------|
-| Supervised learning | `False` | `loss.item()` |
-| VQE / QAOA | `False` | `energy` |
-| PPO policy loss | `False` | `loss.item()` |
-| SB3 RL (via callback) | `True` | `set_metric(reward)` |
+| Value | Warmup LR | Stagnation Spike | Smart Brake |
+|-------|-----------|------------------|-------------|
+| `"none"` | — | — | — |
+| `"normal"` | 1.5× base_lr | 1.5× spike | ✅ cancels if improving |
+| `"aggressive"` | 3.0× base_lr | 3.0× spike | ✅ cancels if improving |
+
+**When to use boost:**
+
+| Environment | Recommended | Reason |
+|-------------|-------------|--------|
+| Supervised learning, VQE | `"none"` | Smooth loss landscape, SA sufficient |
+| SB3 / stable frameworks | `"normal"` | Framework manages policy updates internally |
+| Portfolio / regime-switching trading | `"normal"` | Stable reward signal per episode |
+| PPO from scratch, sparse reward | `"aggressive"` | High variance, needs strong LR push |
+| MuJoCo, Atari, Crypto PPO | `"aggressive"` | Sparse/delayed reward signal |
+
+**Key finding:** `"aggressive"` hurts SB3 (60% win rate vs 70% for `"normal"`). SB3's internal update loop conflicts with strong LR boosts. Use `"normal"` for any framework that manages its own optimizer calls.
+
+**`update_interval`** — set to `1` when `optimizer.step()` is called once per episode (e.g. portfolio trading, crypto). Default is `320` (standard PPO mini-batch size).
+
+```python
+# Per-episode training loop
+opt = MobiuOptimizer(base_opt, ..., boost="aggressive", update_interval=1)
+```
+
+**Verbose feedback:** set `verbose=True` to see what the boost engine is doing:
+```
+⚡ Boost (aggressive): attempting warmup (3.0x LR)...
+💡 Boost (aggressive): warmup cancelled — training already improving
+⚡ Boost (aggressive): attempting stagnation spike (3.0x LR)...
+```
+No message means training is going well on its own — no boost was applied.
 
 ### Fair Benchmarking
 
@@ -284,7 +312,6 @@ optimizer_mobiu = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,       # prevent auto-replace
-    maximize=False,
     verbose=False
 )
 
@@ -299,16 +326,38 @@ optimizer_mobiu.end()
 
 ### Benchmarks
 
-#### Reinforcement Learning
+#### Reinforcement Learning (v4.5)
+
+**boost=none** (Soft Algebra only):
 
 | Domain | Improvement | Win Rate | Seeds | p-value |
 |--------|-------------|----------|-------|---------|
-| LunarLander-v3 (PPO) | **+98.8%** | 97% (29/30) | 30 | <0.000001 |
-| LunarLander-v3 (SB3 PPO) | **+197.4%** | 80% (24/30) | 30 | 0.000189 |
-| Portfolio Trading (PPO) | **+219.3%** | 100% | 10 | 0.000977 |
-| MuJoCo InvertedPendulum-v5 | **+330.2%** | 90% | 10 | — |
-| MuJoCo Hopper-v5 | **+29.9%** | 90% | 10 | — |
-| Atari Breakout | **+135.9%** | 100% | 3 | — |
+| LunarLander-v3 (PPO) | **+30.6%** | 77% (23/30) | 30 | 0.000566 |
+| LunarLander-v3 (SB3 PPO) | **+109%** | 67% (20/30) | 30 | 0.047 |
+| Portfolio Trading (PPO) | **+133.9%** | 100% (10/10) | 10 | 0.000977 |
+| MuJoCo InvertedPendulum-v5 | **+17.7%** | 40% (4/10) | 10 | — |
+| MuJoCo Hopper-v5 | **+9.8%** | 70% (7/10) | 10 | — |
+| Crypto Trading (BTC-like) | **+168%** | 95% (19/20) | 20 | 0.000002 |
+| Crypto Trading (BTC-USD real) | **+48.7%** | 100% (20/20) | 20 | 0.000001 |
+
+**boost=aggressive** (recommended for PPO from scratch):
+
+| Domain | Improvement | Win Rate | Seeds | p-value |
+|--------|-------------|----------|-------|---------|
+| LunarLander-v3 (PPO) | **+74.1%** | 97% (29/30) | 30 | <0.000001 |
+| MuJoCo InvertedPendulum-v5 | **+68.5%** | 60% (6/10) | 10 | — |
+| MuJoCo Hopper-v5 | **+33.4%** | 90% (9/10) | 10 | — |
+| Portfolio Trading (PPO) | **+160.4%** | 100% (10/10) | 10 | 0.000977 |
+| Crypto Trading (BTC-like) | **+318.1%** | 95% (19/20) | 20 | 0.000002 |
+| Atari Breakout | **+53.1%** | 100% (5/5) | 5 | — |
+
+**boost=normal** (recommended for SB3 and stable frameworks):
+
+| Domain | Improvement | Win Rate | Seeds | p-value |
+|--------|-------------|----------|-------|---------|
+| LunarLander-v3 (SB3 PPO) | **+138.7%** | 70% (21/30) | 30 | 0.008705 |
+| Portfolio Trading (PPO) | **+165.2%** | 100% (10/10) | 10 | 0.000977 |
+| Crypto Trading (BTC-like) | **+275%** | 95% (19/20) | 20 | 0.000002 |
 
 #### Quantum Computing (VQE — IBM FakeFez)
 
@@ -389,7 +438,7 @@ opt = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,
-    maximize=False,   # minimizing PPO surrogate loss
+    boost="aggressive",   # optional: helps in high-variance RL
     verbose=False
 )
 
@@ -430,7 +479,6 @@ class MobiuCallback(BaseCallback):
             base_opt,
             license_key=LICENSE_KEY,
             method="adaptive",
-            maximize=True,        # SB3 maximizes episode reward
             sync_interval=50,
             verbose=False
         )
@@ -486,24 +534,11 @@ pm         = generate_preset_pass_manager(backend=backend, optimization_level=1)
 isa_ansatz = pm.run(ansatz)
 isa_ops    = hamiltonian.apply_layout(isa_ansatz.layout)
 
-# Same baseline optimizer (Pure Adam) and Mobiu use base_lr=LR
-# Pre-generate SPSA deltas so both see identical gradients
+# Pre-generate SPSA deltas so both baseline and Mobiu see identical gradients
 np.random.seed(seed * 1000)
 spsa_deltas = [np.random.choice([-1, 1], size=ansatz.num_parameters)
                for _ in range(NUM_STEPS)]
 
-# --- Pure Adam baseline ---
-class PureAdam:
-    def __init__(self, params_np, lr=LR):
-        self._tensor = torch.tensor(params_np, dtype=torch.float64, requires_grad=True)
-        self._opt    = torch.optim.Adam([self._tensor], lr=lr)
-    def step(self, params_np, grad_np):
-        self._opt.zero_grad()
-        self._tensor.grad = torch.tensor(grad_np, dtype=torch.float64)
-        self._opt.step()
-        return self._tensor.detach().numpy().copy()
-
-# --- Mobiu-Q ---
 params    = init_params.copy()
 mobiu_opt = MobiuQCore(
     license_key=LICENSE_KEY,
@@ -729,10 +764,8 @@ opt      = MobiuOptimizer(
 )
 
 for step in range(80):
-    energy   = real_world_loss(policy)        # evaluated in reality
+    energy   = real_world_loss(policy)
     gradient = simulator_gradient(policy, step)  # biased (wrong physics)
-    # Use MobiuQCore NumPy-style if working with param arrays,
-    # or opt.zero_grad() + loss.backward() + opt.step(loss.item()) in PyTorch
     opt.zero_grad()
     apply_grad_to_policy(policy, gradient)
     opt.step(energy)
@@ -766,7 +799,7 @@ for batch_x, noisy_labels in train_loader:
     loss = criterion(model(batch_x), noisy_labels)
     opt.zero_grad()
     loss.backward()
-    opt.step(loss.item())   # Soft Algebra detects systematic label mismatch
+    opt.step(loss.item())
 
 opt.end()
 ```
@@ -792,7 +825,6 @@ opt      = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,
-    maximize=False,   # minimizing policy surrogate loss
     verbose=False
 )
 
@@ -843,7 +875,8 @@ opt      = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,
-    maximize=False,   # minimizing policy loss
+    boost="normal",       # helpful for regime-switching environments
+    update_interval=1,    # one step() call per episode
     verbose=False
 )
 
@@ -914,7 +947,6 @@ opt      = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,
-    maximize=False,
     verbose=False
 )
 
@@ -957,7 +989,6 @@ opt      = MobiuOptimizer(
     license_key=LICENSE_KEY,
     method="adaptive",
     base_lr=LR,
-    maximize=False,
     sync_interval=50,
     verbose=False
 )
@@ -1043,15 +1074,21 @@ opt.end()
 
 Always pass `base_lr=` explicitly. If diverging, lower LR on the base optimizer. If stuck, raise it.
 
-### 5. Common Fixes by Domain
+### 5. Boost not showing messages?
+
+If you set `boost="aggressive"` but see no `⚡` messages:
+- Check `verbose=True` is set on `MobiuOptimizer`
+- If you call `step()` once per episode, add `update_interval=1`
+
+### 6. Common Fixes by Domain
 
 | Domain | Issue | Fix |
 |--------|-------|-----|
-| **RL (PPO)** | rewards unstable | `maximize=False` + `loss.item()` |
+| **RL (PPO)** | rewards unstable | `boost="aggressive"` + `loss.item()` |
 | **SB3** | can't pass loss | use callback + `set_metric(reward)` |
 | **VQE** | gradient mismatch | pre-generate SPSA deltas, same for both |
 | **LoRA** | slow convergence | `SGD(momentum=0.9)` + `adaptive` |
-| **Federated** | high variance | `standard` + `base_lr=0.01` |
+| **Portfolio/Crypto** | boost not firing | add `update_interval=1` |
 
 ---
 
