@@ -1,4 +1,4 @@
-# Mobiu-Q v4.5
+# Mobiu-Q v4.6
 
 **Soft Algebra for Optimization & Attention**
 
@@ -1229,7 +1229,7 @@ The nilpotent property ε²=0 separates "potential" (what could happen) from "re
 ```
 a_t = curvature / (curvature + mean_energy)   # landscape uncertainty
 b_t = improvement ∈ [-1, 1]                   # actual progress
-trust = |real| / (|real| + |soft| + ε)        # confidence in update
+trust = |real| / (|real| + |soft|)            # confidence in update (φ=-1 → halt if both vanish)
 lr_t  = base_lr × (1 + trust × soft_factor)   # adaptive scaling
 ```
 

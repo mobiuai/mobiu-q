@@ -52,6 +52,7 @@ DELTA       = 2.0
 # ── Setup ─────────────────────────────────────────────────────────────────────
 print("Setting up FakeFez backend...")
 backend   = AerSimulator.from_backend(FakeBackend())
+backend.set_options(seed_simulator=42)  # Global seed for reproducibility
 estimator = BackendEstimatorV2(backend=backend)
 estimator.options.default_shots = NUM_SHOTS
 
@@ -140,6 +141,7 @@ def main():
 
         # ── Baseline: Pure Adam ───────────────────────────────────────────
         print("    Running Pure Adam...", end=" ", flush=True)
+        backend.set_options(seed_simulator=seed * 999)  # Deterministic shot noise
         params = init_params.copy()
         opt    = PureAdam(params, lr=LR)
         best   = float('inf')
@@ -154,6 +156,7 @@ def main():
 
         # ── Test: Adam + Mobiu-Q ──────────────────────────────────────────
         print("    Running Adam + Mobiu-Q...", end=" ", flush=True)
+        backend.set_options(seed_simulator=seed * 999)  # Same shot noise as Adam
         params    = init_params.copy()
         mobiu_opt = MobiuQCore(
             license_key=LICENSE_KEY,
