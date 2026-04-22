@@ -1,4 +1,4 @@
-# Mobiu-Q v4.6
+# Mobiu-Q v4.6.1
 
 **Soft Algebra for Optimization & Attention**
 
@@ -998,6 +998,72 @@ for step in range(N_STEPS):
 
 opt.end()
 ```
+
+---
+
+## Known Limitations
+
+Mobiu-Q works by detecting systematic gradient-direction bias and correcting for it. When the bias isn't there, or the signal isn't extractable, the optimizer won't help — and can occasionally hurt. This section documents the cases we've confirmed in benchmarking.
+
+### When Mobiu-Q does not help (or can hurt slightly)
+
+**1. Already-converged policies in continuous-control RL.**
+
+Mobiu-Q's strongest wins are when a base optimizer is stuck. When the base has already found a good local optimum, the additional warping sometimes perturbs rather than helps.
+
+| Benchmark | Result | Win rate | p-value |
+|-----------|--------|----------|---------|
+| SAC HalfCheetah-v5 (Actor+Critic wrap, already converged) | regression on some seeds | 9/20 | 0.849 (not significant) |
+| SAC HalfCheetah-v5 (stuck seeds only, <-100 reward) | **+163% to +309%** | 100% on stuck seeds | — |
+
+The pattern is bimodal: **strong gains when the base is stuck, marginal or slightly negative when already converged.** A conditional-wrapping mode (activate Mobiu-Q only when recent reward is below threshold) is planned for a future release. For now, the practical rule is: don't wrap an SAC policy that's already training well — there's nothing to fix.
+
+**2. Data-quality problems misdiagnosed as gradient bias.**
+
+Mobiu-Q specifically targets *systematic direction bias* in the gradient. It does not correct for label noise, feature drift, or distribution mismatch in the data itself.
+
+| Benchmark | Bias source | Result |
+|-----------|-------------|--------|
+| Logistics ranker (feature-level noise) | non-systematic label noise | Mobiu loses |
+| Logistics ranker (random label flip) | stochastic, not directional | Mobiu loses |
+
+If your baseline Adam is struggling because the data is noisy or mislabeled in a random (non-systematic) way, a data-cleaning pipeline will beat any optimizer change. See the "Why Soft Algebra Works for Systematic Bias" section above for when Mobiu-Q is and isn't the right tool.
+
+### When Soft Algebra is effectively off (false sense of activation)
+
+**3. Short training runs.**
+
+The server needs at least 3 energy samples in its history to compute curvature. In hybrid PyTorch mode with the default `sync_interval=50`, this means roughly `3 × sync_interval = 150` steps before Soft Algebra can meaningfully activate. Shorter runs will fall back to the base optimizer silently — **in v4.6 the client warns about this at `end()`.**
+
+| Run length | Effective behavior |
+|------------|-------------------|
+| < 150 steps with default `sync_interval=50` | base Adam only (SA never computes curvature) |
+| 150 – 500 steps | partial SA activation (3 – 10 syncs) |
+| > 500 steps | full SA activation (≥ 10 syncs, meaningful warping) |
+
+For short benchmark runs, lower `sync_interval` (e.g. `sync_interval=5`) or use `update_interval=1` to force per-step syncs. For production training that goes over thousands of steps, the default is fine.
+
+**4. Cloud connectivity required.**
+
+Soft Algebra currently runs in the cloud. When the Cloud Function is unreachable (cold start, network failure, quota exceeded), the client transparently falls back to the base optimizer. **In v4.6 the client warns the user once per session** when this happens, rather than silently degrading. A pure-library mode that runs SA locally is on the roadmap.
+
+### Hard constraints
+
+**5. Rate limit.** 20 requests/second per license key. Production training at very high step rates should use `sync_interval ≥ 50` (the default) — this has been tuned for typical deep-learning workloads.
+
+**6. Quantum/NumPy base optimizers.** In `MobiuQCore` (quantum mode), the server-side base optimizer is limited to: `Adam`, `NAdam`, `AMSGrad`, `SGD`, `Momentum`, `LAMB`. No RMSprop or Adagrad. PyTorch hybrid mode has no such restriction — any optimizer with `.step()`, `.zero_grad()`, and `.param_groups` works.
+
+### How to tell if Mobiu-Q is actually helping
+
+Run a fair A/B on your own problem before relying on it:
+
+```python
+# Toggle Soft Algebra on/off with the same base optimizer, same seed, same data
+opt_on  = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=True,  method="adaptive")
+opt_off = MobiuOptimizer(base_opt, license_key=KEY, use_soft_algebra=False, method="adaptive")
+```
+
+If `use_soft_algebra=False` and `use_soft_algebra=True` give statistically similar results on your workload, your problem isn't gradient-direction-biased — Mobiu-Q is neutral on it. That's a legitimate finding, not a bug.
 
 ---
 

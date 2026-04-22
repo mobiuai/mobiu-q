@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 4.6 - Frustration Engine for Quantum
+Version: 4.6.1 - Transparent failure modes + no-op detection
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -657,6 +657,12 @@ class _MobiuPyTorchBackend:
         self._accumulated_metric = 0.0
         self._metric_count = 0
         self._stored_metric = None
+
+        # Warning state — track silent-failure and no-op conditions (v4.6)
+        self._cloud_sync_failures = 0       # count of failed cloud syncs during step()
+        self._cloud_sync_successes = 0      # count of successful cloud syncs
+        self._cloud_warned_once = False     # have we already told the user cloud is down
+        self._no_op_check_done = False      # have we already checked/warned about no-op regime
         
         # Start session
         self._start_session()
@@ -835,6 +841,7 @@ class _MobiuPyTorchBackend:
                 
                 data = r.json()
                 if data.get('success'):
+                    self._cloud_sync_successes += 1
                     # Update base LR from Soft Algebra
                     if 'adaptive_lr' in data:
                         self.base_lr = data['adaptive_lr']
@@ -851,8 +858,23 @@ class _MobiuPyTorchBackend:
                             for param in pg['params']:
                                 if param.grad is not None:
                                     param.grad.data.mul_(warp_factor)
-                    
-            except: pass
+                else:
+                    # Server returned success=False (rate limit, quota, etc.)
+                    self._cloud_sync_failures += 1
+                    if self.verbose and not self._cloud_warned_once:
+                        err = data.get('error', 'unknown error')
+                        print(f"⚠️  Mobiu-Q cloud returned error: {err}")
+                        print(f"   Training continues with base Adam only (SA disabled until cloud recovers).")
+                        self._cloud_warned_once = True
+
+            except Exception as e:
+                # Network error / timeout / JSON decode failure
+                self._cloud_sync_failures += 1
+                if self.verbose and not self._cloud_warned_once:
+                    print(f"⚠️  Mobiu-Q cloud unreachable ({type(e).__name__}): {str(e)[:80]}")
+                    print(f"   Training continues with base Adam only (SA disabled for this run).")
+                    print(f"   Subsequent failures in this run will be silent.")
+                    self._cloud_warned_once = True
             
             self._accumulated_metric = 0.0
             self._metric_count = 0
@@ -957,6 +979,28 @@ class _MobiuPyTorchBackend:
     
     def end(self):
         """End session."""
+        # --- Pre-close diagnostic: was SA actually active? (v4.6 no-op detector) ---
+        # If SA was meant to be on but the cloud never synced enough points to
+        # compute curvature (needs ≥3 energy points server-side), warn the user
+        # that they effectively ran plain Adam the whole time. Common cause:
+        # total_steps < 3 * sync_interval.
+        if (self.verbose
+                and self.use_soft_algebra
+                and not self.full_sync
+                and self.session_id is not None
+                and not self._no_op_check_done):
+            self._no_op_check_done = True
+            # Consider SA "active" only if we got at least 3 successful syncs
+            # (server-side curvature formula needs 3 energy points).
+            if self._cloud_sync_successes < 3 and self._cloud_sync_failures == 0:
+                projected_min = 3 * self.sync_interval
+                print(f"⚠️  Mobiu-Q SA was enabled but did not activate meaningfully in this run.")
+                print(f"   Only {self._cloud_sync_successes} cloud sync(s) completed (need ≥3 to compute curvature).")
+                print(f"   Reason: only {self._local_step_count} step() calls with sync_interval={self.sync_interval}.")
+                print(f"   Fix: run at least {projected_min} steps, or lower sync_interval "
+                      f"(e.g. sync_interval={max(1, self._local_step_count // 4)}).")
+                print(f"   This run effectively used base Adam only — benchmarks may not reflect SA performance.")
+
         if self.session_id:
             try:
                 response = requests.post(self.api_endpoint, json={
@@ -1665,7 +1709,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "4.6"
+__version__ = "4.6.1"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
