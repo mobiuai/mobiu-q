@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 4.6.1
+Version: 5.0
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v4.6.1
+# Mobiu-Q v5.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -175,16 +175,38 @@ print(f"Q4/Q1 Ratio: {backtest.q4_q1_ratio:.2f}x")
 
 ## License Key
 
+A license key is only required for **cloud mode**. In local mode (new in v5.0), no key is needed.
+
 ```python
-LICENSE_KEY = "your-license-key-here"  # https://app.mobiu.ai
+LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 ```
 
-| Tier | API Calls | Price |
-|------|-----------|-------|
-| Free | 20/month | $0 |
-| Pro | Unlimited | $19/month |
+| Tier | API Calls | Price | Includes |
+|------|-----------|-------|----------|
+| Free | 20/month | $0 | Cloud mode only |
+| Research | Unlimited | $490/month | Cloud + local mode + priority support |
+| Enterprise | Unlimited | Contact us | Self-hosted / air-gapped + SLA |
 
-**Note:** MobiuAttention and MobiuSignal run locally — no license key required.
+**Local mode (v5.0+):** Pass `sa_backend="local"` to run Soft Algebra in-process without any cloud calls:
+
+```python
+from mobiu_q import MobiuOptimizer
+import torch
+
+base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
+opt = MobiuOptimizer(base_opt, sa_backend="local", method="adaptive", base_lr=3e-4)
+
+for batch in dataloader:
+    loss = criterion(model(batch))
+    opt.zero_grad(); loss.backward()
+    opt.step(loss.item())
+
+opt.end()
+```
+
+No license key, no network calls. Numerically identical to cloud mode (parity-tested).
+
+**Note:** MobiuAttention and MobiuSignal run locally in all modes — no license key required.
 
 ---
 
@@ -1074,21 +1096,21 @@ If your baseline Adam is struggling because the data is noisy or mislabeled in a
 
 ### When Soft Algebra is effectively off (false sense of activation)
 
-**3. Short training runs.**
+**3. Short training runs (cloud mode only).**
 
-The server needs at least 3 energy samples in its history to compute curvature. In hybrid PyTorch mode with the default `sync_interval=50`, this means roughly `3 × sync_interval = 150` steps before Soft Algebra can meaningfully activate. Shorter runs will fall back to the base optimizer silently — **in v4.6 the client warns about this at `end()`.**
+In **cloud mode**, the server needs at least 3 energy samples in its history to compute curvature. With the default `sync_interval=50`, this means roughly `3 × sync_interval = 150` steps before Soft Algebra can meaningfully activate. Shorter runs fall back to the base optimizer — the client warns about this at `end()`.
 
-| Run length | Effective behavior |
-|------------|-------------------|
+| Run length | Effective behavior (cloud mode) |
+|------------|--------------------------------|
 | < 150 steps with default `sync_interval=50` | base Adam only (SA never computes curvature) |
 | 150 – 500 steps | partial SA activation (3 – 10 syncs) |
 | > 500 steps | full SA activation (≥ 10 syncs, meaningful warping) |
 
-For short benchmark runs, lower `sync_interval` (e.g. `sync_interval=5`) or use `update_interval=1` to force per-step syncs. For production training that goes over thousands of steps, the default is fine.
+**Local mode (v5.0+) sidesteps this entirely.** `sync_interval` defaults to 1 in local mode, so Soft Algebra activates from step 1. If you run short benchmarks or need per-step gradient warping, use `sa_backend="local"`.
 
-**4. Cloud connectivity required.**
+**4. Cloud connectivity (cloud mode only).**
 
-Soft Algebra currently runs in the cloud. When the Cloud Function is unreachable (cold start, network failure, quota exceeded), the client transparently falls back to the base optimizer. **In v4.6 the client warns the user once per session** when this happens, rather than silently degrading. A pure-library mode that runs SA locally is on the roadmap.
+When running with `sa_backend="cloud"` (the default), the Cloud Function must be reachable. If it isn't (cold start, network failure, quota exceeded), the client warns once per session and falls back to the base optimizer. Local mode has no network dependency.
 
 ### Hard constraints
 
@@ -1423,9 +1445,10 @@ In quantum optimization, the realized component captures the gap between gradien
 | Tier | API Calls | Price | Get Started |
 |------|-----------|-------|-------------|
 | Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
-| Pro | Unlimited | $19/month | [Get one](https://app.mobiu.ai) |
+| Research | Unlimited + local mode | $490/month | [Subscribe](https://app.mobiu.ai) |
+| Enterprise | Self-hosted + SLA | Contact us | [enterprise@mobiu.ai](mailto:enterprise@mobiu.ai) |
 
-**Note:** MobiuAttention & MobiuSignal run locally — no API calls required.
+**Note:** MobiuAttention & MobiuSignal run locally — no API calls required. MobiuOptimizer's local mode (v5.0+, `sa_backend="local"`) also runs without cloud.
 
 ---
 

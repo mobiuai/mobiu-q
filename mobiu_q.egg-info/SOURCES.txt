@@ -3,6 +3,8 @@ pyproject.toml
 mobiu_q/__init__.py
 mobiu_q/cli.py
 mobiu_q/core.py
+mobiu_q/local.py
+mobiu_q/soft_algebra_core.py
 mobiu_q.egg-info/PKG-INFO
 mobiu_q.egg-info/SOURCES.txt
 mobiu_q.egg-info/dependency_links.txt
