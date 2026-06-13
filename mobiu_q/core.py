@@ -3,15 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 5.0 - Pure-library mode (LocalSAEngine)
-
-New in v5.0:
-- Pure-library mode: set sa_backend="local" for in-process Soft Algebra
-  with zero network calls, zero license key, zero round-trips. Numerically
-  identical to cloud mode (verified by parity tests).
-- LocalSAEngine class: the in-process Soft Algebra engine that mirrors the
-  server's optimization_step() behavior.
-- Default remains sa_backend="cloud" — existing code is unaffected.
+Version: 5.0.1
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -380,32 +372,16 @@ class MobiuOptimizer:
         update_interval: int = 320,
         verbose: bool = True,
         problem: Optional[str] = None,
-        sa_backend: str = "cloud",
         **kwargs
     ):
-        # Validate sa_backend — new in v5.0
-        if sa_backend not in ("cloud", "local"):
+        # License key is required.
+        self.license_key = license_key or get_license_key()
+        if not self.license_key:
             raise ValueError(
-                f"sa_backend must be 'cloud' or 'local', got {sa_backend!r}. "
-                "Use sa_backend='local' for pure-library mode (no network)."
+                "License key required. "
+                "Either set the MOBIU_Q_LICENSE_KEY environment variable, "
+                "pass license_key= parameter, or run: mobiu-q activate YOUR_KEY."
             )
-        self.sa_backend = sa_backend
-
-        # License key is REQUIRED for cloud backend, OPTIONAL for local
-        if sa_backend == "cloud":
-            self.license_key = license_key or get_license_key()
-            if not self.license_key:
-                raise ValueError(
-                    "License key required for cloud backend. "
-                    "Either set MOBIU_Q_LICENSE_KEY environment variable, "
-                    "pass license_key= parameter, run: mobiu-q activate YOUR_KEY, "
-                    "or use sa_backend='local' to run without a license (v5.0+)."
-                )
-        else:
-            # Local mode — license key is ignored if provided
-            if license_key and verbose:
-                print("ℹ️  sa_backend='local' — license_key ignored (no cloud calls will be made)")
-            self.license_key = None
         
         # Handle deprecated 'problem' parameter
         if problem is not None:
@@ -442,8 +418,7 @@ class MobiuOptimizer:
             full_sync = total_params < 1000
 
             if sync_interval is None:
-                # In local mode, every step is free — no point in batching
-                sync_interval = 1 if (full_sync or sa_backend == "local") else 50
+                sync_interval = 1 if full_sync else 50
 
             self._backend = _MobiuPyTorchBackend(
                 optimizer_or_params, 
@@ -457,16 +432,10 @@ class MobiuOptimizer:
                 verbose=verbose,
                 full_sync=full_sync,
                 mode=mode or 'simulation',
-                sa_backend=sa_backend,
                 maximize=kwargs.get('maximize', False)
             )
         else:
-            # Quantum mode (MobiuQCore) — local backend not yet supported here
-            if sa_backend == "local":
-                raise NotImplementedError(
-                    "sa_backend='local' is not yet supported for quantum/NumPy "
-                    "mode (MobiuQCore). PyTorch hybrid mode only in v5.0."
-                )
+            # Quantum mode (MobiuQCore)
             self._backend = MobiuQCore(
                 license_key=self.license_key,
                 method=method,
@@ -651,7 +620,6 @@ class _MobiuPyTorchBackend:
                 update_interval: int = 320,
                 verbose: bool = True,
                 full_sync: bool = False, mode: str = 'simulation',
-                sa_backend: str = 'cloud',
                 maximize: bool = False):
         self.optimizer = optimizer
         self.license_key = license_key
@@ -662,7 +630,6 @@ class _MobiuPyTorchBackend:
         self.api_endpoint = API_ENDPOINT
         self.full_sync = full_sync
         self.mode = mode
-        self.sa_backend = sa_backend
         self.maximize = maximize
         
         # Get LR: explicit base_lr > optimizer default logic
@@ -702,23 +669,7 @@ class _MobiuPyTorchBackend:
         self._cloud_warned_once = False     # have we already told the user cloud is down
         self._no_op_check_done = False      # have we already checked/warned about no-op regime
 
-        # Local SA engine — v5.0. Instantiated lazily only in local mode.
-        self._local_engine = None
-        if self.sa_backend == 'local':
-            from .local import LocalSAEngine
-            self._local_engine = LocalSAEngine(
-                method=self.method,
-                base_lr=self.base_lr,
-                use_soft_algebra=self.use_soft_algebra,
-                maximize=self.maximize,
-            )
-            if self.verbose:
-                sa_str = "SA=on" if self.use_soft_algebra else "SA=off"
-                print(f"🚀 Mobiu-Q Local session started (no cloud, no license) "
-                      f"[method={self.method}, base_lr={self.base_lr}, {sa_str}]")
-        else:
-            # Cloud mode — existing path
-            self._start_session()
+        self._start_session()
     
     def _start_session(self):
         """Initialize cloud session."""
@@ -786,55 +737,6 @@ class _MobiuPyTorchBackend:
             metric = self._stored_metric
 
         self._local_step_count += 1
-
-        # ── LOCAL BACKEND (v5.0): in-process SA, no network ──
-        if self.sa_backend == 'local':
-            import torch
-            energy = metric if metric is not None else 0.0
-            self.energy_history.append(energy)
-
-            if not self.use_soft_algebra:
-                self.optimizer.step()
-                return
-
-            # Apply LR boost (frustration engine) — runs in local mode too
-            if self.frustration_engine and metric is not None:
-                factor = self.frustration_engine.get_lr_factor(metric)
-                if factor > 1.0:
-                    boosted_lr = self.base_lr * factor
-                    for pg in self.optimizer.param_groups:
-                        pg['lr'] = boosted_lr
-                    self.lr_history.append(boosted_lr)
-
-            # Step the local engine
-            result = self._local_engine.step(float(energy))
-
-            if result["converged"]:
-                # True minimum detected — don't modify LR, let user decide to halt
-                self.lr_history.append(result["adaptive_lr"])
-                self.warp_history.append(1.0)
-                # Don't call optimizer.step() — we're at the minimum
-                return
-
-            adaptive_lr = result["adaptive_lr"]
-            warp = result["warp_factor"]
-
-            # Apply LR
-            for pg in self.optimizer.param_groups:
-                pg['lr'] = adaptive_lr
-            self.lr_history.append(adaptive_lr)
-            self.warp_history.append(warp)
-
-            # Apply gradient warp (in-place)
-            if warp != 1.0:
-                for pg in self.optimizer.param_groups:
-                    for p in pg['params']:
-                        if p.grad is not None:
-                            p.grad.data.mul_(warp)
-
-            # Client's own optimizer runs the actual update
-            self.optimizer.step()
-            return
 
         # ── FULL SYNC: small models → server computes SA, client runs optimizer ──
         if self.full_sync:
@@ -1021,10 +923,6 @@ class _MobiuPyTorchBackend:
                 }, timeout=5)
             except:
                 pass
-
-        # Reset local SA engine state (v5.0)
-        if self._local_engine is not None:
-            self._local_engine.reset()
     
     def check_usage(self) -> dict:
         """Check current usage without affecting quota."""
@@ -1085,19 +983,6 @@ class _MobiuPyTorchBackend:
     
     def end(self):
         """End session."""
-        # --- Local mode (v5.0): no session to close, just report ---
-        if self.sa_backend == 'local':
-            if self.verbose:
-                if self._local_engine is not None:
-                    print(f"✅ Local session ended ({self._local_engine.t} steps processed)")
-                else:
-                    print(f"✅ Local session ended")
-                if self.frustration_engine:
-                    summary = self.frustration_engine.summary()
-                    if summary:
-                        print(summary)
-            return
-
         # --- Pre-close diagnostic: was SA actually active? (v4.6 no-op detector) ---
         # If SA was meant to be on but the cloud never synced enough points to
         # compute curvature (needs ≥3 energy points server-side), warn the user
@@ -1828,7 +1713,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "5.0"
+__version__ = "5.0.1"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

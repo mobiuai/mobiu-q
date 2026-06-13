@@ -1,4 +1,4 @@
-# Mobiu-Q v5.0
+# Mobiu-Q v5.0.1
 
 **Soft Algebra for Optimization & Attention**
 
@@ -132,7 +132,7 @@ print(f"Q4/Q1 Ratio: {backtest.q4_q1_ratio:.2f}x")
 
 ## License Key
 
-A license key is only required for **cloud mode**. In local mode (new in v5.0), no key is needed.
+A license key is required to use MobiuOptimizer and MobiuQCore. MobiuAttention and MobiuSignal run entirely on the client and need no key — see the notes in their sections below.
 
 ```python
 LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
@@ -140,28 +140,9 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 
 | Tier | API Calls | Price | Includes |
 |------|-----------|-------|----------|
-| Free | 20/month | $0 | Cloud mode only |
-| Research | Unlimited | $490/month | Cloud + local mode + priority support |
+| Free | 20/month | $0 | Cloud access |
+| Research | Unlimited | $490/month | Cloud access + priority support |
 | Enterprise | Unlimited | Contact us | Self-hosted / air-gapped + SLA |
-
-**Local mode (v5.0+):** Pass `sa_backend="local"` to run Soft Algebra in-process without any cloud calls:
-
-```python
-from mobiu_q import MobiuOptimizer
-import torch
-
-base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
-opt = MobiuOptimizer(base_opt, sa_backend="local", method="adaptive", base_lr=3e-4)
-
-for batch in dataloader:
-    loss = criterion(model(batch))
-    opt.zero_grad(); loss.backward()
-    opt.step(loss.item())
-
-opt.end()
-```
-
-No license key, no network calls. Numerically identical to cloud mode (parity-tested).
 
 **Note:** MobiuAttention and MobiuSignal run locally in all modes — no license key required.
 
@@ -1063,11 +1044,9 @@ In **cloud mode**, the server needs at least 3 energy samples in its history to 
 | 150 – 500 steps | partial SA activation (3 – 10 syncs) |
 | > 500 steps | full SA activation (≥ 10 syncs, meaningful warping) |
 
-**Local mode (v5.0+) sidesteps this entirely.** `sync_interval` defaults to 1 in local mode, so Soft Algebra activates from step 1. If you run short benchmarks or need per-step gradient warping, use `sa_backend="local"`.
+**4. Cloud connectivity.**
 
-**4. Cloud connectivity (cloud mode only).**
-
-When running with `sa_backend="cloud"` (the default), the Cloud Function must be reachable. If it isn't (cold start, network failure, quota exceeded), the client warns once per session and falls back to the base optimizer. Local mode has no network dependency.
+The Cloud Function must be reachable. If it isn't (cold start, network failure, quota exceeded), the client warns once per session and falls back to the base optimizer.
 
 ### Hard constraints
 
@@ -1402,10 +1381,10 @@ In quantum optimization, the realized component captures the gap between gradien
 | Tier | API Calls | Price | Get Started |
 |------|-----------|-------|-------------|
 | Free | 20/month | $0 | [Sign up](https://app.mobiu.ai) |
-| Research | Unlimited + local mode | $490/month | [Subscribe](https://app.mobiu.ai) |
+| Research | Unlimited | $490/month | [Subscribe](https://app.mobiu.ai) |
 | Enterprise | Self-hosted + SLA | Contact us | [enterprise@mobiu.ai](mailto:enterprise@mobiu.ai) |
 
-**Note:** MobiuAttention & MobiuSignal run locally — no API calls required. MobiuOptimizer's local mode (v5.0+, `sa_backend="local"`) also runs without cloud.
+**Note:** MobiuAttention & MobiuSignal run locally — no API calls required.
 
 ---
 
