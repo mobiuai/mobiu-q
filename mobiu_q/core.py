@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 5.0.2
+Version: 5.0.3
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -1422,6 +1422,15 @@ class MobiuQCore:
                     return self._offline_step(params, gradient)
                 raise RuntimeError(f"Optimization step failed: {error}")
             
+            # True minimum / frozen step (server signalled convergence, α_t=0).
+            # No 'new_params' is sent — stay put this step. The run resumes
+            # next step automatically (shot noise breaks the tie; server keeps
+            # its prior soft state).
+            if data.get("converged"):
+                if "adaptive_lr" in data:
+                    self.lr_history.append(data["adaptive_lr"])
+                return params
+            
             new_params = np.array(data["new_params"])
             
             # Track LR for diagnostics
@@ -1714,7 +1723,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "5.0.2"
+__version__ = "5.0.3"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",
