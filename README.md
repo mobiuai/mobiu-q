@@ -1,4 +1,4 @@
-# Mobiu-Q v5.0.1
+# Mobiu-Q v5.0.2
 
 **Soft Algebra for Optimization & Attention**
 
@@ -46,7 +46,7 @@ base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
-    method="adaptive",   # standard | deep | adaptive
+    method="adaptive",   # standard | deep | adaptive | pure (experimental)
     base_lr=3e-4,        # always pass base_lr to match your optimizer's LR
     boost="none",        # "none" (default) | "normal" | "aggressive"
     verbose=False
@@ -157,6 +157,9 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 | `standard` | VQE, chemistry, smooth landscapes             | 0.01                    | 0.02                  |
 | `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
 | `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
+| `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants | 0.01 | 0.02 |
+
+> 🧪 **`pure` is experimental and under evaluation — no performance claims yet.** Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
 
 **Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
 
