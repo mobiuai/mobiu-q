@@ -157,7 +157,7 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 | `standard` | VQE, chemistry, smooth landscapes             | 0.01                    | 0.02                  |
 | `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
 | `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
-| `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants | 0.01 | 0.02 |
+| `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants. v5.0.6 adds a **conditional energy boost** when the soft radius `r` is small **and** the energy is still relatively far from the ground state. This significantly improves robustness on noisy VQE landscapes while preserving the mathematical purity of the method. | 0.01 | 0.02 |
 
 > 🧪 **`pure` is experimental.** v5.0.4 adds a small floor on the soft modulus `r` to improve robustness in noisy VQE settings while preserving the pure Möbius geometry. Benchmarks on H₄, H₂, Penrose, and Fibonacci show good stability. Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
 
