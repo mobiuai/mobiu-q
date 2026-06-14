@@ -1,4 +1,4 @@
-# Mobiu-Q v5.0.3
+# Mobiu-Q v5.0.4
 
 **Soft Algebra for Optimization & Attention**
 
@@ -159,7 +159,7 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 | `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
 | `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants | 0.01 | 0.02 |
 
-> 🧪 **`pure` is experimental and under evaluation — no performance claims yet.** Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
+> 🧪 **`pure` is experimental.** v5.0.4 adds a small floor on the soft modulus `r` to improve robustness in noisy VQE settings while preserving the pure Möbius geometry. Benchmarks on H₄, H₂, Penrose, and Fibonacci show good stability. Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
 
 **Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
 
