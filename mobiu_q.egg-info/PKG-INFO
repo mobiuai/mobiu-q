@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 5.0.6
+Version: 5.0.7
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v5.0.5
+# Mobiu-Q v5.0.7
 
 **Soft Algebra for Optimization & Attention**
 
@@ -89,7 +89,7 @@ base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
-    method="adaptive",   # standard | deep | adaptive | pure (experimental)
+    method="adaptive",   # standard | deep | adaptive | pure | mobius (experimental)
     base_lr=3e-4,        # always pass base_lr to match your optimizer's LR
     boost="none",        # "none" (default) | "normal" | "aggressive"
     verbose=False
@@ -201,8 +201,11 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 | `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
 | `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
 | `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants. v5.0.6 adds a **conditional energy boost** when the soft radius `r` is small **and** the energy is still relatively far from the ground state. This significantly improves robustness on noisy VQE landscapes while preserving the mathematical purity of the method. | 0.01 | 0.02 |
+| `mobius` 🧪 | Experimental — learning rate **is** the Klein-Maimon Möbius measurement coordinate of the soft state: `lr_t = base_lr · \|B\|`, `B = b·sign(a)/(\|a\|+\|b\|)`. Touches **only** the learning rate (no gradient warp); bounded by construction (`lr ≤ base_lr`); anneals the rate down as improvement slows. Tends to match `adaptive` on rugged/long-horizon problems. Set `base_lr` near the top of a stable range. | 0.01 | 0.02 |
 
 > 🧪 **`pure` is experimental.** v5.0.4 adds a small floor on the soft modulus `r` to improve robustness in noisy VQE settings while preserving the pure Möbius geometry. Benchmarks on H₄, H₂, Penrose, and Fibonacci show good stability. Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
+
+> 🧪 **`mobius` is experimental.** It is the minimal sibling of `pure`: the learning rate is read directly off the Möbius **measurement** coordinate `B` of the soft state (`lr_t = base_lr · |B|`), and the gradient is passed through **unwarped**. Because `|B| ≤ 1`, the rate is bounded by construction (`lr ≤ base_lr`) and anneals downward as realized improvement slows relative to curvature. In offline tests this matches the scalar `adaptive` layer and, on rugged landscapes with a long horizon, can beat a best-tuned fixed learning rate without any tuning; on smooth landscapes the bound can cost a little versus a high constant rate, so pick `base_lr` near the top of a stable range. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → lr step differs (and there is no warp).
 
 **Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
 
