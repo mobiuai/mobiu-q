@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: mobiu-q
-Version: 5.0.7
+Version: 5.0.8
 Summary: Soft Algebra Optimizer + O(N) Linear Attention + Streaming Anomaly Detection
 Author-email: Mobiu Technologies <support@mobiu.ai>
 License: Proprietary
@@ -41,7 +41,7 @@ Requires-Dist: qiskit>=0.40.0; extra == "all"
 Requires-Dist: pennylane>=0.28.0; extra == "all"
 Requires-Dist: pyod>=1.0.0; extra == "all"
 
-# Mobiu-Q v5.0.7
+# Mobiu-Q v5.0.8
 
 **Soft Algebra for Optimization & Attention**
 
@@ -201,11 +201,11 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 | `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
 | `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
 | `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants. v5.0.6 adds a **conditional energy boost** when the soft radius `r` is small **and** the energy is still relatively far from the ground state. This significantly improves robustness on noisy VQE landscapes while preserving the mathematical purity of the method. | 0.01 | 0.02 |
-| `mobius` 🧪 | Experimental — learning rate **is** the Klein-Maimon Möbius measurement coordinate of the soft state: `lr_t = base_lr · \|B\|`, `B = b·sign(a)/(\|a\|+\|b\|)`. Touches **only** the learning rate (no gradient warp); bounded by construction (`lr ≤ base_lr`); anneals the rate down as improvement slows. Tends to match `adaptive` on rugged/long-horizon problems. Set `base_lr` near the top of a stable range. | 0.01 | 0.02 |
+| `mobius` 🧪 | Experimental — learning rate is the **signed** Klein-Maimon Möbius measurement coordinate: `lr_t = base_lr · (1 + B)`, `B = b·sign(a)/(\|a\|+\|b\|) ∈ [-1,1]`. Dials the LR **around** your default — accelerates when improving (`B>0`), brakes when worsening (`B<0`); rate stays in `[0, 2·base_lr]`. Touches **only** the LR (no warp). **Auto-calibrates the LR from the industry-default `base_lr` — no tuning.** Beats default Adam 10/10 in our benchmarks; comparable to hand-tuned Adam. | use your framework default | use your framework default |
 
 > 🧪 **`pure` is experimental.** v5.0.4 adds a small floor on the soft modulus `r` to improve robustness in noisy VQE settings while preserving the pure Möbius geometry. Benchmarks on H₄, H₂, Penrose, and Fibonacci show good stability. Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
 
-> 🧪 **`mobius` is experimental.** It is the minimal sibling of `pure`: the learning rate is read directly off the Möbius **measurement** coordinate `B` of the soft state (`lr_t = base_lr · |B|`), and the gradient is passed through **unwarped**. Because `|B| ≤ 1`, the rate is bounded by construction (`lr ≤ base_lr`) and anneals downward as realized improvement slows relative to curvature. In offline tests this matches the scalar `adaptive` layer and, on rugged landscapes with a long horizon, can beat a best-tuned fixed learning rate without any tuning; on smooth landscapes the bound can cost a little versus a high constant rate, so pick `base_lr` near the top of a stable range. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → lr step differs (and there is no warp).
+> 🧪 **`mobius` is experimental.** The learning rate is the **signed** Möbius measurement coordinate `B ∈ [-1,1]` of the accumulated soft state: `lr_t = base_lr · (1 + B)`. It dials the rate **around** your default — `B>0` (improving / measured) accelerates above `base_lr`, `B<0` (worsening / demeasured) brakes below it, `B=0` leaves the default untouched (with a `0.05·base_lr` floor, so the rate stays in `[0.05·base_lr, 2·base_lr]`). The gradient is passed through **unwarped** — the measurement sets only the LR. Practical effect: **pass your framework's normal default `base_lr` and Mobiu auto-calibrates the rate around it — no grid search.** In our benchmarks (Penrose, Rosenbrock, noisy Penrose) this beats default Adam 10/10 at the same `base_lr`; it is meant to be *comparable to* hand-tuned Adam while removing the tuning, not to beat a fully grid-tuned baseline. The mechanism is fully soft-derived: only the measurement coordinate — no trust ratio, no super-equation, no warp.
 
 **Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
 
