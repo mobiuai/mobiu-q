@@ -1,4 +1,4 @@
-# Mobiu-Q v5.0.8
+# Mobiu-Q v6.0
 
 **Soft Algebra for Optimization & Attention**
 
@@ -9,13 +9,29 @@
 
 ## Overview
 
-Mobiu-Q is a framework built on **Soft Algebra** (nilpotent ε²=0) that provides:
+Mobiu-Q is a research framework built on **Klein–Maimon Soft Algebra** — the
+nilpotent zero-axis number `S = a·0̄ + b` (ε²=0) and its Möbius *measurement*
+coordinate. It applies that algebra to practical machine-learning components:
 
-1. **MobiuOptimizer** - Stable optimization in noisy environments
-2. **MobiuAttention** 🧪 - O(N) linear attention for long sequences
-3. **MobiuSignal** 🆕 - Trading signals using Soft Algebra
-4. **MobiuAD** - Streaming anomaly detection        
-5. **TrainGuard** - Safe ML training monitor      
+1. **MobiuOptimizer** — soft-measurement learning-rate control on top of your optimizer
+2. **MobiuAttention** 🧪 — soft-algebra attention (creativity / diversity, long sequences)
+3. **MobiuSignal** 🆕 — streaming signals via Soft Algebra
+4. **MobiuAD** — streaming anomaly detection
+5. **TrainGuard** — safe ML training monitor
+
+**What the optimizer actually does — stated plainly.** Mobiu-Q is a **family of
+methods**, each a different hypothesis about how the soft framework can inform an
+update. The recommended default, `mobius`, uses the soft *measurement* coordinate
+to **auto-calibrate the learning rate around your framework's default** — so you
+keep your normal `base_lr` and skip the grid search. In our benchmarks it improves on a
+**default-`base_lr` Adam** across VQE, quasicrystal, and PPO **without per-problem
+tuning** — a way to **get strong results without a grid search**. (The other,
+less-minimal methods add further soft mechanisms and can be the stronger choice on
+specific landscapes.)
+
+> ⚙️ **Status: active research, in development.** We report results honestly,
+> including where the soft structure does and does not add measurable value, and
+> the methods/defaults may change as we learn more. See **Known Limitations**.
 
 ---
 
@@ -46,7 +62,7 @@ base_opt = torch.optim.Adam(model.parameters(), lr=3e-4)
 opt = MobiuOptimizer(
     base_opt,
     license_key=LICENSE_KEY,
-    method="adaptive",   # standard | deep | adaptive | pure | mobius (experimental)
+    method="mobius",     # RECOMMENDED, all domains. (also: standard | deep | adaptive | pure — research)
     base_lr=3e-4,        # always pass base_lr to match your optimizer's LR
     boost="none",        # "none" (default) | "normal" | "aggressive"
     verbose=False
@@ -150,19 +166,39 @@ LICENSE_KEY = "your-license-key-here"  # get one at https://app.mobiu.ai
 
 ## MobiuOptimizer
 
-### Methods
+### Methods — a family exploring different uses of soft algebra
 
-| Method     | Use Case                                      | Default LR (simulation) | Default LR (hardware) |
-|------------|-----------------------------------------------|-------------------------|-----------------------|
-| `standard` | VQE, chemistry, smooth landscapes             | 0.01                    | 0.02                  |
-| `deep`     | Deep circuits, rugged landscapes, QAOA        | 0.1                     | 0.1                   |
-| `adaptive` | RL, LLM fine-tuning, high-variance problems   | 0.0003                  | 0.0003                |
-| `pure` 🧪  | Experimental — adaptation derived purely from soft-plane (Möbius) geometry, no heuristics/clips/constants. v5.0.6 adds a **conditional energy boost** when the soft radius `r` is small **and** the energy is still relatively far from the ground state. This significantly improves robustness on noisy VQE landscapes while preserving the mathematical purity of the method. | 0.01 | 0.02 |
-| `mobius` 🧪 | Experimental — learning rate is the **signed** Klein-Maimon Möbius measurement coordinate: `lr_t = base_lr · (1 + B)`, `B = b·sign(a)/(\|a\|+\|b\|) ∈ [-1,1]`. Dials the LR **around** your default — accelerates when improving (`B>0`), brakes when worsening (`B<0`); rate stays in `[0, 2·base_lr]`. Touches **only** the LR (no warp). **Auto-calibrates the LR from the industry-default `base_lr` — no tuning.** Beats default Adam 10/10 in our benchmarks; comparable to hand-tuned Adam. | use your framework default | use your framework default |
+Mobiu-Q is a **research program**, not a single trick. Each method is a different
+hypothesis about *how* Klein-Maimon soft algebra (the nilpotent zero-axis number
+`S = a·0̄ + b` and its Möbius measurement coordinate) can inform optimization. They
+share the same soft-state machinery — the signal → soft-number mapping, the nilpotent
+evolution law, and the base optimizer underneath — and differ only in **which part of
+the soft framework drives the update**.
 
-> 🧪 **`pure` is experimental.** v5.0.4 adds a small floor on the soft modulus `r` to improve robustness in noisy VQE settings while preserving the pure Möbius geometry. Benchmarks on H₄, H₂, Penrose, and Fibonacci show good stability. Its learning rate and gradient warp are both read off the soft state's direction on the soft circle (the Möbius coordinate) instead of the heuristic formulas `standard` uses; it is bounded by construction and uses no tunable constants. The signal mapping, evolution law, and base optimizer are identical to the other methods — only the final state → (lr, warp) step differs.
+| Method | The soft component — what Klein-Maimon algebra drives it | Intended use |
+|--------|----------------------------------------------------------|--------------|
+| `mobius` ✅ **(default)** | **The Möbius measurement coordinate `B`, on its own.** The accumulated soft state `S = a·0̄ + b` is projected onto its signed measurement coordinate `B = b·sign(a)/(\|a\|+\|b\|) ∈ [-1,1]`, and the learning rate **is** that coordinate: `lr_t = base_lr·(1 + 2·B)`. `B>0` (measured) accelerates, `B<0` (demeasured / potential) brakes, `B=0` holds. This is the single purest use of the algebra — only the measurement coordinate, nothing else. | **All domains** (cross-domain default) |
+| `standard` | **The soft direction of the evolved state.** The nilpotent evolution `S_{t+1} = (γ·S_t)·Δ_t + Δ_t` is run, and the *direction* of the soft component `a·0̄` (potential vs realized) sets the adaptation. The original soft-plane reading. | VQE, chemistry, smooth landscapes |
+| `deep` | **The super-equation Δ†.** A higher-order soft term built from the zero-axis state — the nilpotent structure carried to second order — used to read curvature/escape information that a first-order (gradient-only) read misses in rugged/degenerate regions. | Deep circuits, rugged landscapes, QAOA |
+| `adaptive` | **The soft trust ratio φ.** A three-case confidence read off the soft state: `φ=−1` at a true minimum, `φ=+1` at a barren plateau, `φ=b/(a+b)` in between — i.e. how *measured* vs *potential* the recent trajectory is, used to modulate the step. | RL, LLM fine-tuning, high-variance |
+| `pure` 🧪 | **The full soft-circle geometry.** Both the learning rate and the gradient warp are read off the state's position on the soft (Möbius) circle — the `A` magnitude and `B` measurement coordinates together — with a conditional radius floor for robustness. A fully-geometric update. | Noisy VQE (experimental) |
 
-> 🧪 **`mobius` is experimental.** The learning rate is the **signed** Möbius measurement coordinate `B ∈ [-1,1]` of the accumulated soft state: `lr_t = base_lr · (1 + B)`. It dials the rate **around** your default — `B>0` (improving / measured) accelerates above `base_lr`, `B<0` (worsening / demeasured) brakes below it, `B=0` leaves the default untouched (with a `0.05·base_lr` floor, so the rate stays in `[0.05·base_lr, 2·base_lr]`). The gradient is passed through **unwarped** — the measurement sets only the LR. Practical effect: **pass your framework's normal default `base_lr` and Mobiu auto-calibrates the rate around it — no grid search.** In our benchmarks (Penrose, Rosenbrock, noisy Penrose) this beats default Adam 10/10 at the same `base_lr`; it is meant to be *comparable to* hand-tuned Adam while removing the tuning, not to beat a fully grid-tuned baseline. The mechanism is fully soft-derived: only the measurement coordinate — no trust ratio, no super-equation, no warp.
+> ✅ **Why `mobius` is the default.** It is the **purest** method — the learning rate is
+> *only* the soft measurement coordinate `B`, with no additional layers — and the **most
+> cross-domain**: in our benchmarks it improves on a default-`base_lr` Adam across VQE
+> (H₂, LiH, C₁₃Cl₂), the Penrose quasicrystal, and PPO (crypto, portfolio) **without
+> per-problem tuning** — you keep your framework's normal `base_lr` and Mobiu
+> auto-calibrates the rate around it via the measurement coordinate. `B = b·sign(a)/(\|a\|+\|b\|) ∈ [-1,1]`,
+> floored at `0.05·base_lr` so the rate spans `[0.05·base_lr, 3·base_lr]`.
+>
+> **The other methods add further soft mechanisms** (the Δ† super-equation, the trust
+> ratio, the full soft-circle warp) and can be the stronger choice on specific
+> landscapes — e.g. `deep` on rugged/degenerate QAOA-style problems. They are less
+> minimal than `mobius` but remain first-class options worth trying per domain.
+
+> ⚙️ **Status: in active development.** Mobiu-Q is an evolving research product. Methods,
+> defaults, and APIs may change as we learn more about which soft-algebra mechanisms help
+> most, and where.
 
 **Important:** Always pass `base_lr=` explicitly to match your base optimizer's LR and prevent auto-replacement.
 
@@ -1012,6 +1048,29 @@ opt.end()
 
 ## Known Limitations
 
+### Honest scope of the optimizer (read this first)
+
+We have benchmarked the soft methods extensively, with fair controls. The honest
+picture:
+
+- **`mobius` is a learning-rate auto-calibrator.** It finds a good effective learning
+  rate around your `base_lr` **without a grid search**, and reliably improves on a
+  default-`base_lr` Adam. Its value is **removing the LR tuning** — you keep your normal
+  `base_lr` and let the measurement coordinate adapt the rate.
+- **The other methods (`standard`, `deep`, `adaptive`, `pure`)** add further soft
+  mechanisms (super-equation Δ†, trust ratio, full soft-circle warp). They are less
+  minimal than `mobius` and can be the stronger choice on specific landscapes (e.g.
+  `deep` on rugged/degenerate problems). Try them per domain.
+- **Where the apparent wins came from.** Large headline improvements (e.g. "+99%")
+  are typically measured against a *weak or diverging* baseline (raw SPSA, raw SGD,
+  default-LR Adam). Against a tuned baseline the gap narrows to roughly a tie. We
+  report both framings and recommend the tuned-baseline comparison for decisions.
+
+This is an honest, in-development tool. Use `mobius` to remove LR tuning; do not
+expect it to outperform an optimizer you have already tuned well.
+
+---
+
 Mobiu-Q works by detecting systematic gradient-direction bias and correcting for it. When the bias isn't there, or the signal isn't extractable, the optimizer won't help — and can occasionally hurt. This section documents the cases we've confirmed in benchmarking.
 
 ### When Mobiu-Q does not help (or can hurt slightly)
@@ -1037,6 +1096,17 @@ Mobiu-Q specifically targets *systematic direction bias* in the gradient. It doe
 | Logistics ranker (random label flip) | stochastic, not directional | Mobiu loses |
 
 If your baseline Adam is struggling because the data is noisy or mislabeled in a random (non-systematic) way, a data-cleaning pipeline will beat any optimizer change. See the "Why Soft Algebra Works for Systematic Bias" section above for when Mobiu-Q is and isn't the right tool.
+
+**2b. Optimizers already at their stability-ceiling LR (e.g. DQN / Atari).**
+
+Because `mobius` dials the LR *upward* when learning is going well (`lr` up to
+`3·base_lr`), it can hurt on setups whose default LR is already the maximum stable
+value. Deep Q-learning is the clearest case: DQN/Atari with `lr=1e-4` does not
+tolerate higher rates (the bootstrapped Q-targets destabilize), so `mobius` climbing
+above `1e-4` degrades training. **Rule:** if your `base_lr` is already at the edge of
+stability, either pass a **lower** `base_lr` (so the climb stays in the stable range,
+e.g. `5e-5`) or use plain Adam. `mobius` helps when the default LR is *conservative*
+(room to climb), not when it is already maxed out.
 
 ### When Soft Algebra is effectively off (false sense of activation)
 

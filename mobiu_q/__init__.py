@@ -1,7 +1,7 @@
 """
 Mobiu-Q — Soft Algebra for Optimization & Attention
 ====================================================
-Version: 5.0.8
+Version: 6.0
 
 A framework built on Soft Algebra (nilpotent ε²=0) enabling:
 1. Stable optimization in noisy environments
@@ -91,7 +91,7 @@ License:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "5.0.8"
+__version__ = "6.0"
 __author__ = "Mobiu Technologies"
 
 # ============================================================================
