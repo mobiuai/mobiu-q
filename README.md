@@ -1,4 +1,4 @@
-# Mobiu-Q v6.0
+# Mobiu-Q v6.1
 
 **Soft Algebra for Optimization & Attention**
 
@@ -182,6 +182,7 @@ the soft framework drives the update**.
 | `deep` | **The super-equation Δ†.** A higher-order soft term built from the zero-axis state — the nilpotent structure carried to second order — used to read curvature/escape information that a first-order (gradient-only) read misses in rugged/degenerate regions. | Deep circuits, rugged landscapes, QAOA |
 | `adaptive` | **The soft trust ratio φ.** A three-case confidence read off the soft state: `φ=−1` at a true minimum, `φ=+1` at a barren plateau, `φ=b/(a+b)` in between — i.e. how *measured* vs *potential* the recent trajectory is, used to modulate the step. | RL, LLM fine-tuning, high-variance |
 | `pure` 🧪 | **The full soft-circle geometry.** Both the learning rate and the gradient warp are read off the state's position on the soft (Möbius) circle — the `A` magnitude and `B` measurement coordinates together — with a conditional radius floor for robustness. A fully-geometric update. | Noisy VQE (experimental) |
+| `deltadagger` 🧪 | **Recursive DeltaSoftNumber + theoretical peak (Δ†) guidance.** Independent implementation of the v4 recursive state evolution (`S_{t+1} = γ·S_t ⊗ Δ + Δ`). Uses the theoretical peak of the Super-Equation to solve for `a_new` (via `find_a_for_target`), then derives `soft_factor` and learning rate directly from `τ = C·a·b` with dampening. Experimental — tests whether the theoretical peak can serve as a guiding signal for the next step. | Research / experimental |
 
 > ✅ **Why `mobius` is the default.** It is the **purest** method — the learning rate is
 > *only* the soft measurement coordinate `B`, with no additional layers — and the **most
