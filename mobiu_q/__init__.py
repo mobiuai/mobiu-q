@@ -1,7 +1,7 @@
 """
 Mobiu-Q — Soft Algebra for Optimization & Attention
 ====================================================
-Version: 6.1.3
+Version: 6.1.4
 
 A framework built on Soft Algebra (nilpotent ε²=0) enabling:
 1. Stable optimization in noisy environments
@@ -24,6 +24,9 @@ Methods:
     | deep     | Deep circuits, noisy hardware, complex opt  |
     | adaptive | RL, LLM fine-tuning, high-variance problems |
     | pure 🧪  | Experimental — pure soft-plane (Möbius) scaling, no heuristics/clips |
+    | use_deltadagger | New parameter (boolean). When True, activates         |
+    |                 | DeltaSoftNumber + theoretical peak calibration (Δ†)   |
+    |                 | on top of any method above. Experimental.             |
 
 Quick Start (PyTorch):
     from mobiu_q import MobiuOptimizer
@@ -91,7 +94,7 @@ License:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-__version__ = "6.1.3"
+__version__ = "6.1.4"
 __author__ = "Mobiu Technologies"
 
 # ============================================================================

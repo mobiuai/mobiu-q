@@ -3,7 +3,7 @@ Mobiu-Q Client - Soft Algebra Optimizer
 ========================================
 Cloud-connected optimizer for quantum, RL, and LLM applications.
 
-Version: 6.1.3
+Version: 6.1.4
 
 NEW in v2.7:
 - MobiuOptimizer: Universal wrapper that auto-detects PyTorch optimizers
@@ -79,7 +79,6 @@ METHOD_ALIASES = {
     "adaptive": "adaptive",
     "pure": "pure",
     "mobius": "mobius",
-    "deltadagger": "deltadagger",      # NEW in v6.1
     "vqe": "standard",
     "qaoa": "deep",
     "rl": "adaptive",
@@ -366,6 +365,7 @@ class MobiuOptimizer:
         optimizer_or_params,
         license_key: Optional[str] = None,
         method: str = "adaptive",
+        use_deltadagger: bool = False,
         mode: str = "simulation",
         use_soft_algebra: bool = True,
         sync_interval: Optional[int] = None,
@@ -402,6 +402,7 @@ class MobiuOptimizer:
         self._original_method = method
         self.verbose = verbose
         self.use_soft_algebra = use_soft_algebra
+        self.use_deltadagger = use_deltadagger
         
         # Auto-detect: Is this a PyTorch optimizer?
         self._is_pytorch = (
@@ -425,6 +426,7 @@ class MobiuOptimizer:
                 optimizer_or_params, 
                 self.license_key, 
                 self.method,
+                use_deltadagger=self.use_deltadagger,
                 base_lr=kwargs.get('base_lr'),
                 use_soft_algebra=use_soft_algebra,
                 sync_interval=sync_interval,
@@ -617,6 +619,7 @@ class _MobiuPyTorchBackend:
     def __init__(self, optimizer, license_key: str, method: str, 
                 base_lr: Optional[float] = None,
                 use_soft_algebra: bool = True, sync_interval: int = 50,
+                use_deltadagger: bool = False,
                 boost: str = "none",
                 update_interval: int = 320,
                 verbose: bool = True,
@@ -632,6 +635,7 @@ class _MobiuPyTorchBackend:
         self.full_sync = full_sync
         self.mode = mode
         self.maximize = maximize
+        self.use_deltadagger = use_deltadagger
         
         # Get LR: explicit base_lr > optimizer default logic
         if base_lr is not None:
@@ -682,7 +686,8 @@ class _MobiuPyTorchBackend:
                 'mode': self.mode,
                 'base_lr': self.base_lr,
                 'base_optimizer': 'Adam',
-                'use_soft_algebra': self.use_soft_algebra
+                'use_soft_algebra': self.use_soft_algebra,
+                'use_deltadagger': self.use_deltadagger
             }, timeout=10)
             
             data = r.json()
@@ -1107,6 +1112,7 @@ class MobiuQCore:
         self,
         license_key: Optional[str] = None,
         method: str = "standard",
+        use_deltadagger: bool = False,
         mode: str = "simulation",
         base_lr: Optional[float] = None,
         base_optimizer: str = DEFAULT_OPTIMIZER,
@@ -1165,6 +1171,7 @@ class MobiuQCore:
         self.verbose = verbose
         self.session_id = None
         self.api_endpoint = API_ENDPOINT
+        self.use_deltadagger = use_deltadagger
 
         # Frustration Engine (NEW)
         self.frustration_engine = UniversalFrustrationEngine(base_lr=self.base_lr) if use_soft_algebra else None
@@ -1214,7 +1221,8 @@ class MobiuQCore:
                     "mode": self.mode,
                     "base_lr": self.base_lr,
                     "base_optimizer": self.base_optimizer,
-                    "use_soft_algebra": self.use_soft_algebra
+                    "use_soft_algebra": self.use_soft_algebra,
+                    'use_deltadagger': self.use_deltadagger
                 },
                 timeout=10
             )
@@ -1723,7 +1731,7 @@ def check_status():
 # EXPORTS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-__version__ = "6.1.3"
+__version__ = "6.1.4"
 __all__ = [
     # New universal optimizer (v2.7)
     "MobiuOptimizer",

@@ -1,4 +1,4 @@
-# Mobiu-Q v6.1.3
+# Mobiu-Q v6.1.4
 
 **Soft Algebra for Optimization & Attention**
 
@@ -182,7 +182,21 @@ the soft framework drives the update**.
 | `deep` | **The super-equation Δ†.** A higher-order soft term built from the zero-axis state — the nilpotent structure carried to second order — used to read curvature/escape information that a first-order (gradient-only) read misses in rugged/degenerate regions. | Deep circuits, rugged landscapes, QAOA |
 | `adaptive` | **The soft trust ratio φ.** A three-case confidence read off the soft state: `φ=−1` at a true minimum, `φ=+1` at a barren plateau, `φ=b/(a+b)` in between — i.e. how *measured* vs *potential* the recent trajectory is, used to modulate the step. | RL, LLM fine-tuning, high-variance |
 | `pure` 🧪 | **The full soft-circle geometry.** Both the learning rate and the gradient warp are read off the state's position on the soft (Möbius) circle — the `A` magnitude and `B` measurement coordinates together — with a conditional radius floor for robustness. A fully-geometric update. | Noisy VQE (experimental) |
-| `deltadagger` 🧪 | **Recursive DeltaSoftNumber + theoretical peak (Δ†) guidance.** Independent implementation of the v4 recursive state evolution (`S_{t+1} = γ·S_t ⊗ Δ + Δ`). Uses the theoretical peak of the Super-Equation to solve for `a_new` (via `find_a_for_target`), then derives `soft_factor` and learning rate directly from `τ = C·a·b` with dampening. Experimental — tests whether the theoretical peak can serve as a guiding signal for the next step. | Research / experimental |
+| `use_deltadagger` (parameter) 🧪 | **New logic layer** (not a method). When set to `true`, activates the recursive `DeltaSoftNumber` + theoretical peak calibration from the Super-Equation on top of any existing method (`mobius`, `adaptive`, `standard`, `pure`, `deep`). Includes `improvement_ema`, τ-based scaling, and dampening. | Research / experimental |
+
+### Using the new logic (`use_deltadagger`)
+
+Instead of using `method="deltadagger"`, we recommend activating the new logic via the parameter:
+
+```python
+# Recommended way
+opt = MobiuOptimizer(
+    base_opt,
+    license_key=KEY,
+    method="mobius",           # or "adaptive", "standard", etc.
+    use_deltadagger=True       # activates the new DeltaSoftNumber + theoretical peak logic
+)ֿ
+```
 
 > ✅ **Why `mobius` is the default.** It is the **purest** method — the learning rate is
 > *only* the soft measurement coordinate `B`, with no additional layers — and the **most
